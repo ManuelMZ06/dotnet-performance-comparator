@@ -1,6 +1,16 @@
 @inherits LayoutComponentBase
 
-@Body
+<div class="app-shell">
+    <AppHeader />
+
+    <div class="app-body">
+        <NavMenu />
+
+        <main class="app-content">
+            @Body
+        </main>
+    </div>
+</div>
 
 <div id="blazor-error-ui">
     Ha ocurrido un error no controlado.

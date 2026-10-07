@@ -309,6 +309,15 @@ M-07 ──"Generar reporte comparativo"──► M-08
 5. Cada pantalla se implementa junto con su caso de uso; la tarea de interfaz base solo incluye layout, navegación, componentes base y M-01.
 6. No agregar pantallas, menús ni elementos que no aparezcan en los mockups (salvo el mensaje de estado requerido por RF-14).
 
+### 7.1 Decisiones de implementación de interfaz (C-03)
+
+| # | Decisión | Motivo |
+|---|---|---|
+| UI-01 | **Pantallas aún no implementadas:** los elementos de navegación y los accesos rápidos se muestran con su apariencia final como `<a role="link" aria-disabled="true">` **sin `href`**; los botones usan el atributo `disabled`. No se crean páginas *placeholder*. `NavMenu` y `QuickAccessCard` reciben el destino como `Href` opcional: al implementar cada pantalla basta con asignar su ruta. | Evitar 404 y rutas ficticias, manteniendo semántica accesible (no enfocables, anunciados como no disponibles). |
+| UI-02 | **Subtítulo dinámico:** `PageHeader` publica la descripción mediante `SectionContent` y `AppHeader` la muestra con `SectionOutlet` (nombre de sección en `LayoutSections.PageSubtitle`). `PageHeader` también fija `<PageTitle>`. | Cada página declara título y descripción una sola vez, sin servicios globales. |
+| UI-03 | **Escala de `BarChart`:** cada grupo (categoría/métrica) se escala respecto a su propio valor máximo; los valores se muestran con su unidad sobre cada barra y el gráfico tiene leyenda textual .NET 8 / .NET 10. La geometría se calcula en `BarChartLayout` (C# puro). | Las métricas tienen unidades distintas (%, MB, ms…) y no son comparables en una escala común; la leyenda y las etiquetas evitan depender solo del color. |
+| UI-04 | **Responsive sin JavaScript:** ≤ 1200 px tarjetas de resumen en 2 columnas y paneles en 1 columna; ≤ 900 px la barra lateral pasa a una fila superior de elementos con ajuste de línea; ≤ 600 px todo apilado y se oculta el texto "Proyecto de Graduación" (el logo se conserva). | Evitar desbordamiento horizontal manteniendo el diseño de escritorio de los mockups. |
+
 ---
 
 ## 8. Brechas y decisiones pendientes

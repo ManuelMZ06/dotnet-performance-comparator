@@ -1,0 +1,63 @@
+@using System.Globalization
+
+@if (Groups.Count == 0)
+{
+    <EmptyState Message="@EmptyMessage" />
+}
+else
+{
+    var geometry = BarChartLayout.Calculate(Groups);
+
+    <figure class="bar-chart">
+        <svg class="bar-chart__svg" viewBox="0 0 @Num(geometry.Width) @Num(geometry.Height)" role="img" aria-labelledby="@_titleId">
+            <title id="@_titleId">@Description(geometry)</title>
+
+            <line class="bar-chart__axis" x1="0" y1="@Num(geometry.BaselineY)" x2="@Num(geometry.Width)" y2="@Num(geometry.BaselineY)" />
+
+            @foreach (var group in geometry.Groups)
+            {
+                <g class="bar-chart__group">
+                    @foreach (var bar in group.Bars)
+                    {
+                        <g>
+                            <rect class="bar-chart__bar @SeriesClass(bar.Series)" x="@Num(bar.X)" y="@Num(bar.Y)" width="@Num(bar.Width)" height="@Num(bar.Height)" />
+                            <text class="bar-chart__value" x="@Num(bar.X + bar.Width / 2)" y="@Num(bar.Y - 6)" text-anchor="middle">@FormatValue(bar.Value, group.Unit)</text>
+                        </g>
+                    }
+                    <text class="bar-chart__category" x="@Num(group.CenterX)" y="@Num(geometry.BaselineY + 22)" text-anchor="middle">@group.Category</text>
+                </g>
+            }
+        </svg>
+
+        <figcaption class="bar-chart__legend">
+            <span class="bar-chart__legend-item"><span class="bar-chart__swatch bar-chart__bar--net8"></span>.NET 8</span>
+            <span class="bar-chart__legend-item"><span class="bar-chart__swatch bar-chart__bar--net10"></span>.NET 10</span>
+        </figcaption>
+    </figure>
+}
+
+@code {
+    private readonly string _titleId = $"bar-chart-{Guid.NewGuid():N}";
+
+    [Parameter]
+    public IReadOnlyList<BarChartGroup> Groups { get; set; } = [];
+
+    /// <summary>Descripción accesible del gráfico.</summary>
+    [Parameter]
+    public string Title { get; set; } = "Gráfico comparativo .NET 8 y .NET 10";
+
+    [Parameter]
+    public string EmptyMessage { get; set; } = "Aún no existen resultados para comparar.";
+
+    private static string Num(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string FormatValue(decimal value, string unit) =>
+        $"{value.ToString("0.##", CultureInfo.CurrentCulture)} {unit}".TrimEnd();
+
+    private static string SeriesClass(BarChartSeries series) =>
+        series == BarChartSeries.Net8 ? "bar-chart__bar--net8" : "bar-chart__bar--net10";
+
+    private string Description(BarChartGeometry geometry) =>
+        Title + ". " + string.Join("; ", geometry.Groups.Select(g =>
+            $"{g.Category}: .NET 8 {FormatValue(g.Bars[0].Value, g.Unit)}, .NET 10 {FormatValue(g.Bars[1].Value, g.Unit)}"));
+}

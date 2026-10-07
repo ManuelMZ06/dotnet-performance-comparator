@@ -1,0 +1,12 @@
+<div class="summary-card">
+    <p class="summary-card__label">@Label</p>
+    <p class="summary-card__value">@Value</p>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Value { get; set; } = string.Empty;
+}

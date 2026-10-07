@@ -1,0 +1,27 @@
+@if (Href is not null)
+{
+    <a class="quick-access" href="@Href">
+        <span class="quick-access__title">@Title</span>
+        <span class="quick-access__subtitle">@Subtitle</span>
+    </a>
+}
+else
+{
+    @* Destino aún no implementado: se muestra sin navegación. *@
+    <a class="quick-access" role="link" aria-disabled="true">
+        <span class="quick-access__title">@Title</span>
+        <span class="quick-access__subtitle">@Subtitle</span>
+    </a>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Subtitle { get; set; }
+
+    /// <summary>Destino del acceso; null mientras la pantalla no esté implementada.</summary>
+    [Parameter]
+    public string? Href { get; set; }
+}

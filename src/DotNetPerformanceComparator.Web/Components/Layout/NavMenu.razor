@@ -1,0 +1,37 @@
+<nav class="nav" aria-label="Navegación">
+    <div class="nav__title" aria-hidden="true">Navegación</div>
+
+    <ul class="nav__list">
+        @foreach (var item in Items)
+        {
+            <li>
+                @if (item.Href is not null)
+                {
+                    <NavLink class="nav__item" href="@item.Href" Match="NavLinkMatch.All" ActiveClass="nav__item--active">@item.Text</NavLink>
+                }
+                else
+                {
+                    @* Pantalla aún no implementada: se muestra sin destino de navegación. *@
+                    <a class="nav__item" role="link" aria-disabled="true">@item.Text</a>
+                }
+            </li>
+        }
+    </ul>
+</nav>
+
+@code {
+    // Href = null mientras la pantalla correspondiente no esté implementada.
+    private static readonly NavItem[] Items =
+    [
+        new("Inicio", ""),
+        new("Incorporar proyecto", null),
+        new(".NET 10 / Migración", null),
+        new("Configuración", null),
+        new("Ejecución", null),
+        new("Resultados", null),
+        new("Comparación", null),
+        new("Reportes", null)
+    ];
+
+    private sealed record NavItem(string Text, string? Href);
+}

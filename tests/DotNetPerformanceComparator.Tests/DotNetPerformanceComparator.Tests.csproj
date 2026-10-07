@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\DotNetPerformanceComparator.Domain\DotNetPerformanceComparator.Domain.csproj" />
     <ProjectReference Include="..\..\src\DotNetPerformanceComparator.Application\DotNetPerformanceComparator.Application.csproj" />
     <ProjectReference Include="..\..\src\DotNetPerformanceComparator.Infrastructure\DotNetPerformanceComparator.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\DotNetPerformanceComparator.Web\DotNetPerformanceComparator.Web.csproj" />
   </ItemGroup>
 
 </Project>

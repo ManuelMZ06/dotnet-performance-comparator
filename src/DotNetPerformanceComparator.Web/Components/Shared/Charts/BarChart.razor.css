@@ -1,0 +1,61 @@
+.bar-chart {
+    margin: 0;
+}
+
+.bar-chart__svg {
+    display: block;
+    width: 100%;
+    max-height: 260px;
+}
+
+.bar-chart__axis {
+    stroke: var(--color-border);
+    stroke-width: 1;
+}
+
+.bar-chart__bar--net8 {
+    fill: var(--color-net8);
+    background: var(--color-net8);
+}
+
+.bar-chart__bar--net10 {
+    fill: var(--color-net10);
+    background: var(--color-net10);
+}
+
+.bar-chart__value,
+.bar-chart__category {
+    font-family: var(--font-sans);
+    fill: var(--color-text-secondary);
+}
+
+.bar-chart__value {
+    font-size: 10px;
+}
+
+.bar-chart__category {
+    font-size: 12px;
+    fill: var(--color-text);
+}
+
+.bar-chart__legend {
+    display: flex;
+    justify-content: center;
+    gap: 1.25rem;
+    margin-top: 0.5rem;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.bar-chart__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.bar-chart__swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}

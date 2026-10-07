@@ -1,0 +1,12 @@
+<section class="panel">
+    <h2 class="panel__title">@Title</h2>
+    @ChildContent
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

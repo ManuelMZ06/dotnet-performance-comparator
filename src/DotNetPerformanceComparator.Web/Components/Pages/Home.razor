@@ -1,7 +1,42 @@
 @page "/"
 
-<PageTitle>Comparador de rendimiento .NET</PageTitle>
+@* M-01 Inicio / Panel principal. Estados vacíos hasta conectar B-04, B-05 y B-06 (docs/UI_SPEC.md). *@
 
-<h1>Análisis de Rendimiento .NET 8 vs .NET 10</h1>
+<PageHeader Title="Inicio / Panel principal"
+            Description="Vista general del sistema y acceso rápido a las funciones principales" />
 
-<p>Herramienta para comparar el rendimiento y consumo de recursos de una aplicación web entre .NET 8 y .NET 10.</p>
+<div class="summary-grid">
+    <SummaryCard Label="Proyecto activo" Value="Sin proyecto registrado" />
+    <SummaryCard Label="Última migración" Value="Sin migraciones" />
+    <SummaryCard Label="Última evaluación" Value="Sin evaluaciones" />
+    <SummaryCard Label="Último reporte" Value="No disponible" />
+</div>
+
+<div class="home-grid">
+    <Panel Title="Accesos rápidos">
+        <div class="quick-access-grid">
+            <QuickAccessCard Title="Incorporar proyecto" Subtitle=".NET 8" />
+            <QuickAccessCard Title="Migrar a .NET 10" Subtitle="Preparar versión experimental" />
+            <QuickAccessCard Title="Configurar evaluación" Subtitle="Pruebas, métricas y repeticiones" />
+            <QuickAccessCard Title="Consultar resultados" Subtitle="Historial y filtros" />
+        </div>
+    </Panel>
+
+    <Panel Title="Resumen comparativo reciente">
+        <BarChart Groups="@ResumenComparativo" Title="Resumen comparativo reciente entre .NET 8 y .NET 10" />
+    </Panel>
+</div>
+
+<Panel Title="Actividad reciente">
+    <EmptyState Message="Todavía no hay actividad disponible." />
+</Panel>
+
+<div class="page-actions">
+    @* Destino M-04 aún no implementado. *@
+    <button type="button" class="btn btn-primary" disabled>Crear nueva evaluación</button>
+</div>
+
+@code {
+    // Sin fuente de datos hasta implementar los CU correspondientes.
+    private static readonly IReadOnlyList<BarChartGroup> ResumenComparativo = [];
+}

@@ -1,0 +1,17 @@
+@* Título y descripción de la página. La descripción se proyecta también como subtítulo del encabezado. *@
+<PageTitle>@Title</PageTitle>
+
+<SectionContent SectionName="@LayoutSections.PageSubtitle">@Description</SectionContent>
+
+<header class="page-header">
+    <h1>@Title</h1>
+    <p class="page-header__description">@Description</p>
+</header>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Description { get; set; } = string.Empty;
+}
