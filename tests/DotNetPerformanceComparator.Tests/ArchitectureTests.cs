@@ -1,6 +1,7 @@
 using System.Reflection;
 using DotNetPerformanceComparator.Application;
 using DotNetPerformanceComparator.Infrastructure;
+using DotNetPerformanceComparator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DotNetPerformanceComparator.Tests;
@@ -20,6 +21,14 @@ public class ArchitectureTests
         var domain = Assembly.Load(Prefix + "Domain");
 
         Assert.Empty(ProjectReferencesOf(domain));
+    }
+
+    [Fact]
+    public void Domain_NoDependeDeEntityFrameworkCore()
+    {
+        var domain = Assembly.Load(Prefix + "Domain");
+
+        Assert.DoesNotContain(domain.GetReferencedAssemblies(), a => a.Name!.StartsWith("Microsoft.EntityFrameworkCore"));
     }
 
     [Fact]
@@ -44,10 +53,17 @@ public class ArchitectureTests
     {
         var services = new ServiceCollection()
             .AddApplication()
-            .AddInfrastructure();
+            .AddInfrastructure("Data Source=:memory:");
 
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
+        using var scope = provider.CreateScope();
 
-        Assert.NotNull(provider);
+        Assert.NotNull(scope.ServiceProvider.GetService<AppDbContext>());
+    }
+
+    [Fact]
+    public void RegistroDeInfrastructure_SinCadenaDeConexion_Falla()
+    {
+        Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddInfrastructure(null));
     }
 }

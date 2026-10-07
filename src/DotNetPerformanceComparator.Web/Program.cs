@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Punto de composición: registro de capas mediante inyección de dependencias.
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure();
+builder.Services.AddInfrastructure(builder.Configuration.GetConnectionString("DefaultConnection"));
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

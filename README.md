@@ -4,13 +4,13 @@ Herramienta web del Proyecto de Graduación **"Análisis de Rendimiento y Consum
 
 Permitirá incorporar una aplicación web .NET 8, migrarla experimentalmente a .NET 10, ejecutar evaluaciones de rendimiento, recopilar métricas, comparar resultados, visualizarlos y generar reportes PDF.
 
-> Estado actual: estructura base de la solución (Tarea 1). Aún no se implementa ningún caso de uso.
+> Estado actual: estructura base, modelo de dominio y persistencia (EF Core + SQLite). Aún no se implementa ningún caso de uso.
 
 ## Stack
 
 - C# / ASP.NET Core — la herramienta se ejecuta sobre **.NET 8** (`net8.0`)
 - Blazor Server (componentes Razor con interactividad de servidor)
-- Entity Framework Core + SQLite *(pendiente)*
+- Entity Framework Core 8 + SQLite (migraciones en `Infrastructure/Persistence/Migrations`)
 - NBomber, dotnet-counters / Microsoft.Diagnostics.NETCore.Client, QuestPDF *(pendiente)*
 - Windows 11 como entorno principal
 
@@ -46,7 +46,7 @@ Web ──────────────► Application ──► Domain
 Cada capa expone un método de extensión para registrar sus servicios:
 
 - `services.AddApplication()` — `src/DotNetPerformanceComparator.Application/DependencyInjection.cs`
-- `services.AddInfrastructure()` — `src/DotNetPerformanceComparator.Infrastructure/DependencyInjection.cs`
+- `services.AddInfrastructure(connectionString)` — `src/DotNetPerformanceComparator.Infrastructure/DependencyInjection.cs`
 
 Ambos se invocan desde `src/DotNetPerformanceComparator.Web/Program.cs`.
 
@@ -66,7 +66,7 @@ Ambos se invocan desde `src/DotNetPerformanceComparator.Web/Program.cs`.
 
 ## Requisitos
 
-- .NET SDK 8 o superior (el SDK 10 compila proyectos `net8.0`).
+- **.NET SDK 8** (8.0.425 o una versión 8.0.x posterior). El archivo `global.json` fija el SDK 8 con `rollForward: latestFeature`, por lo que nunca se usa el SDK 10 aunque esté instalado.
 - **Runtime ASP.NET Core 8** para ejecutar la herramienta y las pruebas.
 
 ## Comandos
