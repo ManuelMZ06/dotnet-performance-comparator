@@ -21,4 +21,18 @@ public class WebArchitectureTests
 
         Assert.Empty(violaciones);
     }
+
+    [Fact]
+    public void Web_NoContieneInteroperabilidadNativa()
+    {
+        var web = typeof(DotNetPerformanceComparator.Web.Components.App).Assembly;
+        const BindingFlags todos = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+
+        var violaciones = web.GetTypes()
+            .Where(t => t.IsImport || t.GetMethods(todos).Any(m => m.Attributes.HasFlag(MethodAttributes.PinvokeImpl)))
+            .Select(t => t.FullName)
+            .ToList();
+
+        Assert.Empty(violaciones);
+    }
 }

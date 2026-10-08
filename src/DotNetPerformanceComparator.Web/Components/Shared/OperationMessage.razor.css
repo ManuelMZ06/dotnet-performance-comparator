@@ -1,0 +1,35 @@
+.operation-message {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid;
+    border-left-width: 6px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+}
+
+.operation-message--info {
+    background: var(--color-primary-soft-2);
+    border-color: var(--color-primary-border);
+    color: var(--color-primary-text-dark);
+}
+
+.operation-message--success {
+    background: #f0fdf4;
+    border-color: var(--color-success);
+    color: #14532d;
+}
+
+.operation-message--warning {
+    background: #fffbeb;
+    border-color: var(--color-status-progress);
+    color: #78350f;
+}
+
+.operation-message--error {
+    background: #fef2f2;
+    border-color: var(--color-danger);
+    color: #7f1d1d;
+}

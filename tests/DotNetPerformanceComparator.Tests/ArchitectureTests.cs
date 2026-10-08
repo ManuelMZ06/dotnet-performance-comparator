@@ -1,7 +1,12 @@
 using System.Reflection;
 using DotNetPerformanceComparator.Application;
 using DotNetPerformanceComparator.Infrastructure;
+using DotNetPerformanceComparator.Application.Projects.Incorporation;
 using DotNetPerformanceComparator.Infrastructure.Persistence;
+using DotNetPerformanceComparator.Infrastructure.Persistence.Repositories;
+using DotNetPerformanceComparator.Infrastructure.Platform.Windows;
+using DotNetPerformanceComparator.Infrastructure.Projects;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DotNetPerformanceComparator.Tests;
@@ -52,13 +57,18 @@ public class ArchitectureTests
     public void RegistroDeCapas_ConstruyeProveedorDeServicios()
     {
         var services = new ServiceCollection()
+            .AddLogging()
             .AddApplication()
             .AddInfrastructure("Data Source=:memory:");
 
-        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
         using var scope = provider.CreateScope();
 
-        Assert.NotNull(scope.ServiceProvider.GetService<AppDbContext>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IDbContextFactory<AppDbContext>>());
+        Assert.IsType<IncorporarProyectoService>(scope.ServiceProvider.GetRequiredService<IIncorporarProyectoService>());
+        Assert.IsType<ProjectInspector>(scope.ServiceProvider.GetRequiredService<IProjectInspector>());
+        Assert.IsType<ProyectoDotNetRepository>(scope.ServiceProvider.GetRequiredService<IProyectoDotNetRepository>());
+        Assert.IsType<WindowsProjectFilePicker>(scope.ServiceProvider.GetRequiredService<IProjectFilePicker>());
     }
 
     [Fact]

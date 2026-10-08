@@ -1,0 +1,25 @@
+@* Lista de elementos con indicador de estado. El estado también se indica con texto. *@
+<ul class="status-list">
+    @foreach (var item in Items)
+    {
+        <li class="status-list__item">
+            <span class="status-list__indicator status-list__indicator--@item.State.ToString().ToLowerInvariant()" aria-hidden="true"></span>
+            <span class="status-list__text">
+                <span>@item.Text</span>
+                <span class="status-list__state">@StateLabel(item.State)</span>
+            </span>
+        </li>
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<StatusListItem> Items { get; set; } = [];
+
+    private static string StateLabel(StatusListState state) => state switch
+    {
+        StatusListState.Correcto => "Correcto",
+        StatusListState.Error => "Error",
+        _ => "Pendiente"
+    };
+}

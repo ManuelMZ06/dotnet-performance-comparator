@@ -24,6 +24,9 @@
     --color-secondary-border: #9ca3af;
     --color-success: #16a34a;
     --color-danger: #ef4444;
+    --color-status-ok: #22c55e;
+    --color-status-progress: #f59e0b;
+    --color-status-pending: #cbd5e1;
     --color-net8: #60a5fa;
     --color-net10: #34d399;
 
@@ -112,11 +115,41 @@ a {
     color: #ffffff;
 }
 
+.btn-secondary {
+    background: var(--color-secondary);
+    border-color: var(--color-secondary-border);
+    color: var(--color-text);
+}
+
 .btn:disabled,
 .btn[aria-disabled="true"] {
     cursor: not-allowed;
     opacity: 0.65;
 }
+
+/* =========================================================================
+   Campos de formulario
+   ========================================================================= */
+.form-control {
+    width: 100%;
+    min-height: 40px;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-secondary-border);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-text);
+}
+
+    .form-control[readonly] {
+        background: var(--color-surface-muted);
+        color: var(--color-text-secondary);
+    }
+
+    .form-control::placeholder {
+        color: var(--color-text-muted);
+    }
 
 /* =========================================================================
    Validación de formularios (plantilla Blazor)

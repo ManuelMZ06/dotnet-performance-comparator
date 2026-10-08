@@ -212,7 +212,7 @@ Estos elementos se conectarán a información real cuando se resuelvan B-04, B-0
 ### M-02 — Incorporar proyecto .NET 8 (CU-01)
 - **Panel "Datos del proyecto":**
   - Campos: Nombre del proyecto · Tipo de aplicación · Ruta del proyecto (ruta a `.csproj`, ancho completo).
-  - Botón secundario "Examinar carpeta".
+  - Botón secundario "Examinar carpeta" → **implementado como "Seleccionar archivo..."** (junto al campo, abre el selector nativo de Windows) **+ "Validar ruta"** (debajo, ejecuta la inspección) (decisión B-09, UI-09).
   - Campos de solo lectura/detectados: Versión detectada · Framework objetivo · Estado.
   - Sub-panel "Validaciones realizadas": `StatusList` con:
     - Se localizó el archivo .csproj
@@ -317,6 +317,11 @@ M-07 ──"Generar reporte comparativo"──► M-08
 | UI-02 | **Subtítulo dinámico:** `PageHeader` publica la descripción mediante `SectionContent` y `AppHeader` la muestra con `SectionOutlet` (nombre de sección en `LayoutSections.PageSubtitle`). `PageHeader` también fija `<PageTitle>`. | Cada página declara título y descripción una sola vez, sin servicios globales. |
 | UI-03 | **Escala de `BarChart`:** cada grupo (categoría/métrica) se escala respecto a su propio valor máximo; los valores se muestran con su unidad sobre cada barra y el gráfico tiene leyenda textual .NET 8 / .NET 10. La geometría se calcula en `BarChartLayout` (C# puro). | Las métricas tienen unidades distintas (%, MB, ms…) y no son comparables en una escala común; la leyenda y las etiquetas evitan depender solo del color. |
 | UI-04 | **Responsive sin JavaScript:** ≤ 1200 px tarjetas de resumen en 2 columnas y paneles en 1 columna; ≤ 900 px la barra lateral pasa a una fila superior de elementos con ajuste de línea; ≤ 600 px todo apilado y se oculta el texto "Proyecto de Graduación" (el logo se conserva). | Evitar desbordamiento horizontal manteniendo el diseño de escritorio de los mockups. |
+| UI-05 | **`OperationMessage` (RF-14):** se ubica bajo `PageHeader`; tipos Info, Success, Warning y Error con borde de color **y** prefijo textual ("Información:", "Correcto:", "Advertencia:", "Error:"). Error usa `role="alert"`; los demás `role="status"`. Nunca muestra detalles técnicos ni trazas. (M-02) | Accesibilidad y no depender solo del color. |
+| UI-06 | **`StatusList`:** cada elemento muestra indicador de color **y** el texto del estado (Pendiente / Correcto / Error) debajo de la descripción, como en M-03. | No depender solo del color; mismo formato en M-02 y M-03. |
+| UI-07 | **Componentes creados en M-02:** `OperationMessage`, `StatusList`, `KeyValueList` y `FormField` (etiqueta asociada al control mediante `for`/`id`). Los botones usan las clases CSS `.btn-primary` / `.btn-secondary` de `app.css`; no se creó `AppButton`. | Solo lo necesario para la pantalla; evitar generalización prematura. |
+| UI-08 | **M-02 — comportamiento:** la inspección solo se ejecuta con "Validar ruta"; si la ruta se modifica después de validar, la inspección se descarta (estado Pendiente) y "Guardar proyecto" vuelve a deshabilitarse. Una inspección válida se informa con mensaje Info (no Success), reservando Success para el registro. Tras guardar, el formulario se limpia para evitar registros duplicados accidentales. | Evitar guardar información que no corresponde a la ruta mostrada y no prometer más de lo validado. |
+| UI-09 | **M-02 — "Seleccionar archivo..." (C-04.1):** botón secundario a la derecha del campo "Ruta del proyecto" (apilado debajo en ≤ 600 px); el campo sigue siendo editable. Seleccionar, Validar y Guardar son tres acciones distintas: seleccionar coloca la ruta absoluta, descarta cualquier inspección anterior y **no** valida automáticamente. Cancelar el selector no cambia nada ni muestra mensajes. El botón se deshabilita mientras el selector está abierto. Solo se usa `OperationMessage` si el selector no puede abrirse (Error) o la plataforma no es Windows (Warning). El estado de M-02 vive en `IncorporarProyectoFormulario` (C# puro) para poder probarlo sin frameworks de UI. | Usabilidad sin perder el ingreso manual ni la validación explícita de CU-01. |
 
 ---
 
@@ -341,11 +346,15 @@ M-01 usa estados vacíos (ver sección 5, M-01) hasta que estas brechas se conec
 | B-06 | "Actividad reciente". | No existe entidad de bitácora/actividad. Podría derivarse de `ProyectoDotNet.FechaRegistro`, `Migracion` y `Ejecucion`, salvo los reportes (B-05). |
 | B-07 | Mensajes de error (RF-14). | Ningún mockup los muestra; se propondrá un estilo coherente con los tokens. Los estados vacíos de M-01 ya quedaron definidos (sección 5). |
 
-### 8.3 Pantallas de casos de uso — PENDIENTES
+### 8.3 Pantallas de casos de uso — RESUELTAS
+| # | Mockup | Brecha | Decisión |
+|---|---|---|---|
+| B-08 | M-02 | "Tipo de aplicación", "Framework objetivo", "Carpetas clave", "Archivos detectados" no existen en `ProyectoDotNet`. | **Resuelta (C-04).** Son información **transitoria** del resultado de inspección (`ProjectInspectionResult` en Application), mostrada en M-02 y **no persistida**. `ProyectoDotNet` conserva solo Id, Nombre, RutaOriginal, VersionBase, EstadoValidacion y FechaRegistro; no se crean tablas nuevas. |
+| B-09 | M-02 (M-03) | Botones "Examinar carpeta" / "Examinar". | **Resuelta para M-02 (C-04).** Por las restricciones de seguridad del navegador no se obtiene la ruta mediante `<input type="file">`, File System Access API, diálogos nativos ni librerías. El Usuario escribe la **ruta absoluta del `.csproj`** (la herramienta se ejecuta localmente en Windows 11) y el botón "Examinar carpeta" se sustituye por **"Validar ruta"**, que ejecuta la inspección. Evolución técnica justificada del mockup. **Ampliación (C-04.1):** la ruta puede introducirse manualmente o seleccionarse mediante el selector nativo de archivos de Windows ("Seleccionar archivo...") cuando la herramienta se ejecuta localmente en Windows 11. El navegador por sí solo no proporciona la ruta absoluta requerida. La validación continúa siendo una acción independiente. El botón "Examinar" (directorio de salida) de M-03 se tratará en CU-02. |
+
+### 8.4 Pantallas de casos de uso — PENDIENTES
 | # | Mockup | Brecha | Comentario |
 |---|---|---|---|
-| B-08 | M-02 | "Tipo de aplicación", "Framework objetivo", "Carpetas clave", "Archivos detectados" no existen en `ProyectoDotNet`. | Pueden ser datos detectados solo para mostrar (no persistidos) o requerir cambio de modelo. Decidir en CU-01. |
-| B-09 | M-02, M-03 | Botones "Examinar carpeta" / "Examinar". | Blazor Server se ejecuta en el navegador; no dispone de un selector nativo de carpetas del servidor. Decidir mecanismo en CU-01 (p. ej. ingreso de ruta + validación). |
 | B-10 | M-03 | Paso "Ejecución de Upgrade Assistant". | La herramienta concreta de migración no está definida en el contexto ("herramientas del ecosistema .NET"). Decidir en CU-02. |
 | B-11 | M-04 | "Nombre de la evaluación" no existe en `ConfiguracionEvaluacion`; M-06 y M-08 lo muestran ("Eval. 01"). | Requiere agregar el campo o definir cómo se identifica una evaluación. Decidir en CU-03. |
 | B-12 | M-04 | Warm-up, Usuarios virtuales, Duración, Ramp-up, Intervalo, Observaciones. | Encajan como `ParametroEvaluacion` (clave/valor); confirmar en CU-03. |

@@ -1,0 +1,22 @@
+.key-value-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin: 0;
+    font-size: 12px;
+}
+
+.key-value-list__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+    .key-value-list__row dt {
+        font-weight: 700;
+    }
+
+    .key-value-list__row dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+    }

@@ -1,0 +1,47 @@
+.status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.status-list__item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    font-size: 12px;
+}
+
+.status-list__indicator {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    border-radius: 2px;
+    border: 1px solid rgba(15, 23, 42, 0.25);
+}
+
+.status-list__indicator--correcto {
+    background: var(--color-status-ok);
+}
+
+.status-list__indicator--error {
+    background: var(--color-danger);
+}
+
+.status-list__indicator--pendiente {
+    background: var(--color-status-pending);
+}
+
+.status-list__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.status-list__state {
+    font-size: 11px;
+    color: var(--color-text-muted);
+}

@@ -1,0 +1,24 @@
+@* Mensaje de estado de una operación (RF-14). El tipo se indica con texto, no solo con color. *@
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="operation-message operation-message--@Kind.ToString().ToLowerInvariant()" role="@(Kind == OperationMessageKind.Error ? "alert" : "status")">
+        <strong class="operation-message__label">@Label:</strong>
+        <span>@Message</span>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public OperationMessageKind Kind { get; set; } = OperationMessageKind.Info;
+
+    [Parameter]
+    public string? Message { get; set; }
+
+    private string Label => Kind switch
+    {
+        OperationMessageKind.Success => "Correcto",
+        OperationMessageKind.Error => "Error",
+        OperationMessageKind.Warning => "Advertencia",
+        _ => "Información"
+    };
+}

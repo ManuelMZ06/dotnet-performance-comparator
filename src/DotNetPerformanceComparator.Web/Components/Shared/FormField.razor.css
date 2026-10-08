@@ -1,0 +1,12 @@
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.form-field__label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text);
+}

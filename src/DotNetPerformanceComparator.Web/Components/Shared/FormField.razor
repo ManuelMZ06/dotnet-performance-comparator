@@ -1,0 +1,16 @@
+@* Etiqueta + control. "For" debe coincidir con el id del control. *@
+<div class="form-field">
+    <label class="form-field__label" for="@For">@Label</label>
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string For { get; set; } = string.Empty;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

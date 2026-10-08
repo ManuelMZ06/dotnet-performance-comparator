@@ -1,4 +1,8 @@
+using DotNetPerformanceComparator.Application.Projects.Incorporation;
 using DotNetPerformanceComparator.Infrastructure.Persistence;
+using DotNetPerformanceComparator.Infrastructure.Persistence.Repositories;
+using DotNetPerformanceComparator.Infrastructure.Platform.Windows;
+using DotNetPerformanceComparator.Infrastructure.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,7 +20,15 @@ public static class DependencyInjection
             throw new InvalidOperationException("No se configuró la cadena de conexión 'DefaultConnection'.");
         }
 
-        services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
+        // Fábrica de contextos de vida corta: un DbContext no debe vivir todo un circuito de Blazor Server.
+        services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(connectionString));
+
+        // CU-01
+        services.AddSingleton<IProjectInspector, ProjectInspector>();
+        services.AddScoped<IProyectoDotNetRepository, ProyectoDotNetRepository>();
+
+        // Selector nativo de .csproj (solo Windows; en otra plataforma devuelve Unsupported).
+        services.AddSingleton<IProjectFilePicker, WindowsProjectFilePicker>();
 
         return services;
     }

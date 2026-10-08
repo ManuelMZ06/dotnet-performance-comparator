@@ -1,0 +1,14 @@
+<dl class="key-value-list">
+    @foreach (var item in Items)
+    {
+        <div class="key-value-list__row">
+            <dt>@item.Key:</dt>
+            <dd>@item.Value</dd>
+        </div>
+    }
+</dl>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<KeyValuePair<string, string>> Items { get; set; } = [];
+}

@@ -1,4 +1,6 @@
+using DotNetPerformanceComparator.Application.Projects.Incorporation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace DotNetPerformanceComparator.Application;
 
@@ -9,7 +11,11 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
-        // Los servicios de casos de uso se registrarán aquí conforme se implementen.
+        services.TryAddSingleton(TimeProvider.System);
+
+        // CU-01
+        services.AddScoped<IIncorporarProyectoService, IncorporarProyectoService>();
+
         return services;
     }
 }

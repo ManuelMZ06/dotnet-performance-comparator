@@ -1,0 +1,123 @@
+@page "/incorporar-proyecto"
+@using DotNetPerformanceComparator.Application.Projects.Incorporation
+@inject IIncorporarProyectoService Servicio
+@inject IProjectFilePicker Selector
+@inject ILogger<IncorporarProyecto> Logger
+
+@* M-02 — CU-01 Incorporar aplicación .NET 8 (RF-01, RF-14). *@
+
+<PageHeader Title="Incorporar proyecto .NET 8"
+            Description="Registro y validación de la aplicación base que será evaluada" />
+
+<OperationMessage Kind="_formulario.MensajeTipo" Message="@_formulario.Mensaje" />
+
+<div class="incorporacion-grid">
+    <div class="incorporacion-grid__datos">
+        <Panel Title="Datos del proyecto">
+            <div class="form-grid form-grid--2">
+                <FormField Label="Nombre del proyecto" For="nombre-proyecto">
+                    <input id="nombre-proyecto" class="form-control" @bind="_formulario.Nombre" @bind:event="oninput" autocomplete="off" />
+                </FormField>
+                <FormField Label="Tipo de aplicación" For="tipo-aplicacion">
+                    <input id="tipo-aplicacion" class="form-control" readonly value="@Inspeccion?.TipoAplicacion" placeholder="Sin detectar" />
+                </FormField>
+            </div>
+
+            <div class="form-row">
+                <FormField Label="Ruta del proyecto" For="ruta-proyecto">
+                    <div class="ruta-proyecto">
+                        <input id="ruta-proyecto" class="form-control" @bind="_formulario.Ruta" @bind:event="oninput"
+                               placeholder="Ruta absoluta del archivo .csproj" aria-describedby="ruta-proyecto-ayuda"
+                               autocomplete="off" spellcheck="false" />
+                        <button type="button" class="btn btn-secondary" @onclick="_formulario.SeleccionarArchivoAsync"
+                                disabled="@(_formulario.SeleccionandoArchivo || _formulario.Procesando)">Seleccionar archivo...</button>
+                    </div>
+                </FormField>
+                <p id="ruta-proyecto-ayuda" class="form-help">Escriba la ruta absoluta en este equipo del archivo .csproj de la aplicación ASP.NET Core o selecciónelo con "Seleccionar archivo...".</p>
+            </div>
+
+            <div class="form-row">
+                <button type="button" class="btn btn-secondary" @onclick="_formulario.ValidarAsync" disabled="@_formulario.Procesando">Validar ruta</button>
+            </div>
+
+            <div class="form-grid form-grid--3">
+                <FormField Label="Versión detectada" For="version-detectada">
+                    <input id="version-detectada" class="form-control" readonly value="@Inspeccion?.VersionDetectada" placeholder="Sin detectar" />
+                </FormField>
+                <FormField Label="Framework objetivo" For="framework-objetivo">
+                    <input id="framework-objetivo" class="form-control" readonly value="@Inspeccion?.FrameworkObjetivo" placeholder="Sin detectar" />
+                </FormField>
+                <FormField Label="Estado" For="estado-validacion">
+                    <input id="estado-validacion" class="form-control" readonly value="@EstadoTexto" />
+                </FormField>
+            </div>
+
+            <section class="subpanel" aria-labelledby="validaciones-titulo">
+                <h3 id="validaciones-titulo" class="subpanel__title">Validaciones realizadas</h3>
+                <StatusList Items="Validaciones" />
+            </section>
+        </Panel>
+    </div>
+
+    <div class="incorporacion-grid__vista-previa">
+        <Panel Title="Vista previa del proyecto">
+            @if (Inspeccion is { EsValido: true })
+            {
+                <KeyValueList Items="VistaPrevia" />
+            }
+            else
+            {
+                <EmptyState Message="Valide la ruta de un proyecto compatible para ver su información." />
+            }
+        </Panel>
+    </div>
+
+    <div class="incorporacion-grid__acciones">
+        <Panel Title="Acciones">
+            <div class="acciones">
+                <button type="button" class="btn btn-primary" @onclick="_formulario.GuardarAsync" disabled="@(!_formulario.PuedeGuardar)">Guardar proyecto</button>
+                <button type="button" class="btn btn-secondary" @onclick="_formulario.Cancelar" disabled="@_formulario.Procesando">Cancelar</button>
+            </div>
+            <p class="acciones__nota">
+                Al guardar, el sistema registrará la aplicación y la dejará disponible para el proceso de migración experimental y configuración de evaluaciones.
+            </p>
+        </Panel>
+    </div>
+</div>
+
+@code {
+    private IncorporarProyectoFormulario _formulario = default!;
+
+    protected override void OnInitialized() =>
+        _formulario = new IncorporarProyectoFormulario(Servicio, Selector, Logger);
+
+    private ProjectInspectionResult? Inspeccion => _formulario.Inspeccion;
+
+    private string EstadoTexto => Inspeccion switch
+    {
+        null => "Pendiente",
+        { EsValido: true } => "Válido",
+        _ => "No válido"
+    };
+
+    private IReadOnlyList<StatusListItem> Validaciones =>
+        (Inspeccion?.Validaciones ?? IncorporarProyectoService.ValidacionesPendientes)
+            .Select(v => new StatusListItem(v.Descripcion, v.Estado switch
+            {
+                ValidationStatus.Correcto => StatusListState.Correcto,
+                ValidationStatus.Error => StatusListState.Error,
+                _ => StatusListState.Pendiente
+            }))
+            .ToList();
+
+    private IReadOnlyList<KeyValuePair<string, string>> VistaPrevia =>
+    [
+        new("Nombre", string.IsNullOrWhiteSpace(_formulario.Nombre) ? Inspeccion?.NombreSugerido ?? string.Empty : _formulario.Nombre.Trim()),
+        new("Framework", Inspeccion?.VersionDetectada ?? string.Empty),
+        new("Carpetas clave", ListaOVacio(Inspeccion?.CarpetasClave, "Ninguna detectada")),
+        new("Archivos detectados", ListaOVacio(Inspeccion?.ArchivosDetectados, "Ninguno detectado"))
+    ];
+
+    private static string ListaOVacio(IReadOnlyList<string>? valores, string vacio) =>
+        valores is { Count: > 0 } ? string.Join(", ", valores) : vacio;
+}
