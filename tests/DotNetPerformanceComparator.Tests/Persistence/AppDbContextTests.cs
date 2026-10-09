@@ -18,12 +18,24 @@ public class AppDbContextTests : IDisposable
         FechaRegistro = new DateTime(2026, 10, 7, 10, 0, 0, DateTimeKind.Utc)
     };
 
+    private static Migracion NuevaMigracion(ProyectoDotNet proyecto) => new()
+    {
+        Proyecto = proyecto,
+        VersionOrigen = "net8.0",
+        VersionDestino = "net10.0",
+        Estado = "Exitosa",
+        FechaInicio = DateTime.UtcNow
+    };
+
     private int CrearEjecucion()
     {
         using var context = _database.CreateContext();
+        var proyecto = NuevoProyecto();
         var configuracion = new ConfiguracionEvaluacion
         {
-            Proyecto = NuevoProyecto(),
+            Proyecto = proyecto,
+            Migracion = NuevaMigracion(proyecto),
+            Nombre = "Evaluación",
             NumeroEjecuciones = 1,
             FechaCreacion = DateTime.UtcNow,
             Estado = "Configurada"
@@ -86,6 +98,8 @@ public class AppDbContextTests : IDisposable
             var configuracion = new ConfiguracionEvaluacion
             {
                 Proyecto = proyecto,
+                Migracion = proyecto.Migraciones.First(),
+                Nombre = "Evaluación comparativa 01",
                 NumeroEjecuciones = 3,
                 FechaCreacion = DateTime.UtcNow,
                 Estado = "Configurada"
@@ -181,9 +195,12 @@ public class AppDbContextTests : IDisposable
     {
         using (var context = _database.CreateContext())
         {
+            var proyecto = NuevoProyecto();
             var configuracion = new ConfiguracionEvaluacion
             {
-                Proyecto = NuevoProyecto(),
+                Proyecto = proyecto,
+                Migracion = NuevaMigracion(proyecto),
+                Nombre = "Evaluación",
                 NumeroEjecuciones = 1,
                 FechaCreacion = DateTime.UtcNow,
                 Estado = "Configurada"

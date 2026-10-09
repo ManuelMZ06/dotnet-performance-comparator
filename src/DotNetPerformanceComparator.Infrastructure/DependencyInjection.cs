@@ -1,3 +1,4 @@
+using DotNetPerformanceComparator.Application.Evaluations.Configuration;
 using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
 using DotNetPerformanceComparator.Infrastructure.ExperimentalMigration;
@@ -39,6 +40,10 @@ public static class DependencyInjection
         services.AddSingleton<IProjectFileEditor, ProjectFileEditor>();
         services.AddSingleton<IDotNetCommandRunner, DotNetCommandRunner>();
         services.AddSingleton<IDirectoryPicker, WindowsDirectoryPicker>();
+
+        // CU-03
+        services.AddScoped<IConfiguracionEvaluacionRepository, ConfiguracionEvaluacionRepository>();
+        services.AddScoped<IEvaluationCatalogRepository, EvaluationCatalogRepository>();
 
         return services;
     }

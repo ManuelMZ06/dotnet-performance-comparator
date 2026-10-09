@@ -54,6 +54,13 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("FechaCreacion")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("MigracionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("NumeroEjecuciones")
                         .HasColumnType("INTEGER");
 
@@ -61,6 +68,8 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MigracionId");
 
                     b.HasIndex("ProyectoId");
 
@@ -371,11 +380,19 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ConfiguracionEvaluacion", b =>
                 {
+                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.Migracion", "Migracion")
+                        .WithMany("ConfiguracionesEvaluacion")
+                        .HasForeignKey("MigracionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("DotNetPerformanceComparator.Domain.Entities.ProyectoDotNet", "Proyecto")
                         .WithMany("ConfiguracionesEvaluacion")
                         .HasForeignKey("ProyectoId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Migracion");
 
                     b.Navigation("Proyecto");
                 });
@@ -493,6 +510,11 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.Navigation("ConfiguracionesMetrica");
 
                     b.Navigation("Resultados");
+                });
+
+            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.Migracion", b =>
+                {
+                    b.Navigation("ConfiguracionesEvaluacion");
                 });
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ProyectoDotNet", b =>

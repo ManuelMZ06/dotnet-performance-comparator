@@ -11,6 +11,7 @@ public class ConfiguracionEvaluacionConfiguration : IEntityTypeConfiguration<Con
         builder.ToTable("ConfiguracionEvaluacion");
         builder.HasKey(c => c.Id);
 
+        builder.Property(c => c.Nombre).IsRequired();
         builder.Property(c => c.NumeroEjecuciones).IsRequired();
         builder.Property(c => c.FechaCreacion).IsRequired();
         builder.Property(c => c.Estado).IsRequired();
@@ -18,6 +19,11 @@ public class ConfiguracionEvaluacionConfiguration : IEntityTypeConfiguration<Con
         builder.HasOne(c => c.Proyecto)
             .WithMany(p => p.ConfiguracionesEvaluacion)
             .HasForeignKey(c => c.ProyectoId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(c => c.Migracion)
+            .WithMany(m => m.ConfiguracionesEvaluacion)
+            .HasForeignKey(c => c.MigracionId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

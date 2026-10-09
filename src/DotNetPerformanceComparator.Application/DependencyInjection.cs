@@ -1,3 +1,4 @@
+using DotNetPerformanceComparator.Application.Evaluations.Configuration;
 using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,9 @@ public static class DependencyInjection
 
         // CU-02
         services.AddScoped<IMigrarProyectoService, MigrarProyectoService>();
+
+        // CU-03
+        services.AddScoped<IConfigurarEvaluacionService, ConfigurarEvaluacionService>();
 
         return services;
     }

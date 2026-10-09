@@ -1,0 +1,64 @@
+.config-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 1.75rem;
+    align-items: start;
+}
+
+.form-grid--general {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 0.4rem;
+}
+
+.config-section {
+    margin-top: 1.5rem;
+}
+
+.config-section__title {
+    margin-bottom: 0.9rem;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.form-help--warning {
+    color: #78350f;
+}
+
+.config-textarea {
+    min-height: 72px;
+    resize: vertical;
+}
+
+.config-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1.75rem;
+}
+
+    .config-actions .btn {
+        min-width: 160px;
+    }
+
+.btn-success {
+    background: var(--color-success);
+    border-color: var(--color-success);
+    color: #ffffff;
+}
+
+@media (max-width: 1200px) {
+    .config-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .form-grid--general {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .config-actions .btn {
+        width: 100%;
+    }
+}

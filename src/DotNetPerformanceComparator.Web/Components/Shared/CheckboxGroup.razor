@@ -1,0 +1,35 @@
+@* Grupo de casillas (selección múltiple) en rejilla. *@
+<div class="checkbox-group" role="group" aria-label="@Label">
+    @foreach (var opcion in Options)
+    {
+        var id = $"{_prefijo}-{opcion.Id}";
+        <label class="checkbox-group__item" for="@id">
+            <input type="checkbox" id="@id" checked="@Selected.Contains(opcion.Id)" disabled="@Disabled"
+                   @onchange="() => Alternar(opcion.Id)" />
+            <span>@opcion.Nombre</span>
+        </label>
+    }
+</div>
+
+@code {
+    private readonly string _prefijo = $"chk-{Guid.NewGuid():N}";
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<CheckOption> Options { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public ISet<int> Selected { get; set; } = new HashSet<int>();
+
+    [Parameter]
+    public EventCallback<int> OnToggle { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private Task Alternar(int id) => OnToggle.InvokeAsync(id);
+
+    public sealed record CheckOption(int Id, string Nombre);
+}

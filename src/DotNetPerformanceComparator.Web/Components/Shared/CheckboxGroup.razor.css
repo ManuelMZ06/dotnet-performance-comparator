@@ -1,0 +1,36 @@
+.checkbox-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.checkbox-group__item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 40px;
+    padding: 0.4rem 0.75rem;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+    .checkbox-group__item input {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--color-primary);
+    }
+
+@media (max-width: 1000px) {
+    .checkbox-group {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .checkbox-group {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

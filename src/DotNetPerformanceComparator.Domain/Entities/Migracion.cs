@@ -13,4 +13,5 @@ public class Migracion
     public string? Detalle { get; set; }
 
     public ProyectoDotNet Proyecto { get; set; } = null!;
+    public ICollection<ConfiguracionEvaluacion> ConfiguracionesEvaluacion { get; set; } = new List<ConfiguracionEvaluacion>();
 }

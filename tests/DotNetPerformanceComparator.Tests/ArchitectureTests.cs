@@ -1,6 +1,7 @@
 using System.Reflection;
 using DotNetPerformanceComparator.Application;
 using DotNetPerformanceComparator.Infrastructure;
+using DotNetPerformanceComparator.Application.Evaluations.Configuration;
 using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
 using DotNetPerformanceComparator.Infrastructure.Processes;
@@ -75,6 +76,9 @@ public class ArchitectureTests
         Assert.IsType<WindowsDirectoryPicker>(scope.ServiceProvider.GetRequiredService<IDirectoryPicker>());
         Assert.IsType<DotNetCommandRunner>(scope.ServiceProvider.GetRequiredService<IDotNetCommandRunner>());
         Assert.IsType<MigracionRepository>(scope.ServiceProvider.GetRequiredService<IMigracionRepository>());
+        Assert.IsType<ConfigurarEvaluacionService>(scope.ServiceProvider.GetRequiredService<IConfigurarEvaluacionService>());
+        Assert.IsType<ConfiguracionEvaluacionRepository>(scope.ServiceProvider.GetRequiredService<IConfiguracionEvaluacionRepository>());
+        Assert.IsType<EvaluationCatalogRepository>(scope.ServiceProvider.GetRequiredService<IEvaluationCatalogRepository>());
     }
 
     [Fact]

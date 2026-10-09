@@ -1,0 +1,132 @@
+@page "/configuracion"
+@using System.Globalization
+@using DotNetPerformanceComparator.Application.Evaluations.Configuration
+@inject IConfigurarEvaluacionService Servicio
+@inject ILogger<Configuracion> Logger
+
+@* M-04 — CU-03 Configurar evaluación (RF-03, RF-14). *@
+
+<PageHeader Title="Configuración de evaluación"
+            Description="Definición de pruebas, métricas, parámetros y número de ejecuciones" />
+
+<OperationMessage Kind="_formulario.MensajeTipo" Message="@_formulario.Mensaje" />
+
+<Panel Title="Datos generales de la evaluación">
+    <div class="config-grid">
+        <div class="config-grid__general">
+            <div class="form-grid form-grid--general">
+                <FormField Label="Nombre de la evaluación" For="nombre-evaluacion">
+                    <input id="nombre-evaluacion" class="form-control" @bind="_formulario.Nombre" @bind:event="oninput"
+                           disabled="@(!_formulario.HayProyectos)" autocomplete="off" />
+                </FormField>
+                <FormField Label="Proyecto" For="proyecto">
+                    <select id="proyecto" class="form-control" @bind="_formulario.ProyectoId" disabled="@(!_formulario.HayProyectos)">
+                        <option value="">@(_formulario.HayProyectos ? "Seleccione un proyecto" : "Sin proyectos registrados")</option>
+                        @foreach (var proyecto in _formulario.Datos.Proyectos)
+                        {
+                            <option value="@proyecto.Id">@proyecto.Nombre</option>
+                        }
+                    </select>
+                </FormField>
+                <FormField Label="Migración .NET 10" For="migracion">
+                    <select id="migracion" class="form-control" @bind="_formulario.MigracionId"
+                            disabled="@(_formulario.ProyectoId is null || _formulario.ProyectoSinMigraciones)">
+                        <option value="">Seleccione una migración</option>
+                        @foreach (var migracion in _formulario.MigracionesDelProyecto)
+                        {
+                            <option value="@migracion.Id">@EtiquetaMigracion(migracion)</option>
+                        }
+                    </select>
+                </FormField>
+                <FormField Label="Ejecuciones" For="ejecuciones">
+                    <input id="ejecuciones" type="number" min="1" step="1" class="form-control"
+                           @bind="_formulario.NumeroEjecuciones" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
+                </FormField>
+            </div>
+
+            @if (_formulario.ProyectoSinMigraciones)
+            {
+                <p class="form-help form-help--warning">El proyecto seleccionado no tiene una migración .NET 10 exitosa disponible. Realice una migración antes de configurar la evaluación.</p>
+            }
+            else if (_formulario.MigracionId is { } migracionId && RutaDe(migracionId) is { } ruta)
+            {
+                <p class="form-help">Copia experimental .NET 10: @ruta</p>
+            }
+
+            <section class="config-section" aria-labelledby="tipos-titulo">
+                <h3 id="tipos-titulo" class="config-section__title">Tipo de pruebas</h3>
+                <OptionToggleGroup Label="Tipo de pruebas"
+                                   Options="Tipos" Selected="_formulario.TipoPruebaIds"
+                                   OnToggle="_formulario.AlternarTipoPrueba" Disabled="@(!_formulario.HayProyectos)" />
+            </section>
+
+            <section class="config-section" aria-labelledby="metricas-titulo">
+                <h3 id="metricas-titulo" class="config-section__title">Métricas a recopilar</h3>
+                <CheckboxGroup Label="Métricas a recopilar"
+                               Options="Metricas" Selected="_formulario.MetricaIds"
+                               OnToggle="_formulario.AlternarMetrica" Disabled="@(!_formulario.HayProyectos)" />
+            </section>
+        </div>
+
+        <div class="config-grid__parametros">
+            <section class="subpanel" aria-labelledby="parametros-titulo">
+                <h3 id="parametros-titulo" class="subpanel__title">Parámetros específicos</h3>
+                <div class="form-grid form-grid--2">
+                    <FormField Label="Usuarios virtuales" For="usuarios-virtuales">
+                        <input id="usuarios-virtuales" type="number" min="1" step="1" class="form-control"
+                               @bind="_formulario.UsuariosVirtuales" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
+                    </FormField>
+                    <FormField Label="Duración (s)" For="duracion">
+                        <input id="duracion" type="number" min="1" step="1" class="form-control"
+                               @bind="_formulario.DuracionSegundos" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
+                    </FormField>
+                    <FormField Label="Warm-up" For="warm-up">
+                        <input id="warm-up" type="number" min="0" step="1" class="form-control"
+                               @bind="_formulario.WarmUp" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
+                    </FormField>
+                    <FormField Label="Ramp-up (s)" For="ramp-up">
+                        <input id="ramp-up" type="number" min="0" step="1" class="form-control"
+                               @bind="_formulario.RampUpSegundos" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
+                    </FormField>
+                    <FormField Label="Intervalo" For="intervalo">
+                        <input id="intervalo" type="number" min="1" step="1" class="form-control"
+                               @bind="_formulario.Intervalo" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
+                    </FormField>
+                </div>
+                <FormField Label="Observaciones" For="observaciones">
+                    <textarea id="observaciones" class="form-control config-textarea" rows="3"
+                              @bind="_formulario.Observaciones" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)"></textarea>
+                </FormField>
+            </section>
+        </div>
+    </div>
+
+    <div class="config-actions">
+        <button type="button" class="btn btn-primary" @onclick="_formulario.GuardarAsync" disabled="@(!_formulario.PuedeGuardar)">Guardar</button>
+        @* CU-04 aún no implementado: el botón se muestra pero permanece deshabilitado. *@
+        <button type="button" class="btn btn-success" disabled>Iniciar evaluación</button>
+    </div>
+</Panel>
+
+@code {
+    private ConfiguracionFormulario _formulario = default!;
+
+    protected override Task OnInitializedAsync()
+    {
+        _formulario = new ConfiguracionFormulario(Servicio, Logger);
+        return _formulario.CargarAsync();
+    }
+
+    private IReadOnlyList<OptionToggleGroup.ToggleOption> Tipos =>
+        _formulario.Datos.TiposPrueba.Select(t => new OptionToggleGroup.ToggleOption(t.Id, t.Nombre)).ToList();
+
+    private IReadOnlyList<CheckboxGroup.CheckOption> Metricas =>
+        _formulario.Datos.Metricas.Select(m => new CheckboxGroup.CheckOption(m.Id, m.Nombre)).ToList();
+
+    private string? RutaDe(int migracionId) =>
+        _formulario.MigracionesDelProyecto.FirstOrDefault(m => m.Id == migracionId)?.RutaMigrada;
+
+    // FechaUtc se guarda en UTC (D-16) y se muestra en hora local del equipo.
+    private static string EtiquetaMigracion(MigracionOpcion migracion) =>
+        $"Migración #{migracion.Id} — {DateTime.SpecifyKind(migracion.FechaUtc, DateTimeKind.Utc).ToLocalTime().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)}";
+}
