@@ -1,7 +1,9 @@
 using System.Reflection;
 using DotNetPerformanceComparator.Application;
 using DotNetPerformanceComparator.Infrastructure;
+using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
+using DotNetPerformanceComparator.Infrastructure.Processes;
 using DotNetPerformanceComparator.Infrastructure.Persistence;
 using DotNetPerformanceComparator.Infrastructure.Persistence.Repositories;
 using DotNetPerformanceComparator.Infrastructure.Platform.Windows;
@@ -69,6 +71,10 @@ public class ArchitectureTests
         Assert.IsType<ProjectInspector>(scope.ServiceProvider.GetRequiredService<IProjectInspector>());
         Assert.IsType<ProyectoDotNetRepository>(scope.ServiceProvider.GetRequiredService<IProyectoDotNetRepository>());
         Assert.IsType<WindowsProjectFilePicker>(scope.ServiceProvider.GetRequiredService<IProjectFilePicker>());
+        Assert.IsType<MigrarProyectoService>(scope.ServiceProvider.GetRequiredService<IMigrarProyectoService>());
+        Assert.IsType<WindowsDirectoryPicker>(scope.ServiceProvider.GetRequiredService<IDirectoryPicker>());
+        Assert.IsType<DotNetCommandRunner>(scope.ServiceProvider.GetRequiredService<IDotNetCommandRunner>());
+        Assert.IsType<MigracionRepository>(scope.ServiceProvider.GetRequiredService<IMigracionRepository>());
     }
 
     [Fact]

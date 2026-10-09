@@ -18,6 +18,7 @@
 
     private static string StateLabel(StatusListState state) => state switch
     {
+        StatusListState.EnProceso => "En proceso",
         StatusListState.Correcto => "Correcto",
         StatusListState.Error => "Error",
         _ => "Pendiente"

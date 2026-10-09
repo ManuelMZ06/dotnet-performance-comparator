@@ -1,7 +1,10 @@
+using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
+using DotNetPerformanceComparator.Infrastructure.ExperimentalMigration;
 using DotNetPerformanceComparator.Infrastructure.Persistence;
 using DotNetPerformanceComparator.Infrastructure.Persistence.Repositories;
 using DotNetPerformanceComparator.Infrastructure.Platform.Windows;
+using DotNetPerformanceComparator.Infrastructure.Processes;
 using DotNetPerformanceComparator.Infrastructure.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +32,13 @@ public static class DependencyInjection
 
         // Selector nativo de .csproj (solo Windows; en otra plataforma devuelve Unsupported).
         services.AddSingleton<IProjectFilePicker, WindowsProjectFilePicker>();
+
+        // CU-02
+        services.AddScoped<IMigracionRepository, MigracionRepository>();
+        services.AddSingleton<IProjectCopyService, ProjectCopyService>();
+        services.AddSingleton<IProjectFileEditor, ProjectFileEditor>();
+        services.AddSingleton<IDotNetCommandRunner, DotNetCommandRunner>();
+        services.AddSingleton<IDirectoryPicker, WindowsDirectoryPicker>();
 
         return services;
     }

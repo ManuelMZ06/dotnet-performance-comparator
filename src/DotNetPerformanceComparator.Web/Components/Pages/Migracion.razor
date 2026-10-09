@@ -1,0 +1,171 @@
+@page "/migracion"
+@using System.Globalization
+@using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration
+@using DotNetPerformanceComparator.Domain.Constants
+@implements IDisposable
+@inject IMigrarProyectoService Servicio
+@inject IDirectoryPicker Selector
+@inject ILogger<Migracion> Logger
+
+@* M-03 — CU-02 Migrar aplicación experimentalmente a .NET 10 (RF-02, RF-14). *@
+
+<PageHeader Title="Migración experimental a .NET 10"
+            Description="Preparación de una versión experimental a partir de la aplicación base en .NET 8" />
+
+<OperationMessage Kind="_formulario.MensajeTipo" Message="@_formulario.Mensaje" />
+
+<div class="migracion-grid">
+    <div class="migracion-grid__parametros">
+        <Panel Title="Selección y parámetros de migración">
+            <div class="form-grid form-grid--proyecto">
+                <FormField Label="Proyecto base" For="proyecto-base">
+                    <select id="proyecto-base" class="form-control" @bind="_formulario.ProyectoId"
+                            disabled="@(_formulario.Ejecutando || _formulario.Proyectos.Count == 0)" aria-describedby="proyecto-base-ayuda">
+                        <option value="">@(_formulario.Proyectos.Count == 0 ? "Sin proyectos registrados" : "Seleccione un proyecto")</option>
+                        @foreach (var proyecto in _formulario.Proyectos)
+                        {
+                            <option value="@proyecto.Id">@proyecto.Nombre</option>
+                        }
+                    </select>
+                </FormField>
+                <FormField Label="Versión origen" For="version-origen">
+                    <input id="version-origen" class="form-control" readonly value="@(Seleccionado is null ? null : VersionesDotNet.Net8)" placeholder="—" />
+                </FormField>
+                <FormField Label="Versión destino" For="version-destino">
+                    <input id="version-destino" class="form-control" readonly value="@(Seleccionado is null ? null : VersionesDotNet.Net10)" placeholder="—" />
+                </FormField>
+            </div>
+            <p id="proyecto-base-ayuda" class="form-help form-row">
+                @if (_formulario.Proyectos.Count == 0)
+                {
+                    <text>No hay proyectos .NET 8 registrados. Incorpore uno en <a href="incorporar-proyecto">Incorporar proyecto</a>.</text>
+                }
+                else if (Seleccionado is not null)
+                {
+                    <text>Proyecto original (no se modifica): @Seleccionado.RutaOriginal</text>
+                }
+                else
+                {
+                    <text>Proyectos registrados mediante "Incorporar proyecto".</text>
+                }
+            </p>
+
+            <div class="form-row">
+                <FormField Label="Directorio de salida" For="directorio-salida">
+                    <div class="input-with-action">
+                        <input id="directorio-salida" class="form-control" @bind="_formulario.DirectorioSalida" @bind:event="oninput"
+                               disabled="@_formulario.Ejecutando" placeholder="Ruta absoluta de la carpeta para la copia experimental"
+                               aria-describedby="directorio-salida-ayuda" autocomplete="off" spellcheck="false" />
+                        <button type="button" class="btn btn-secondary" @onclick="_formulario.SeleccionarCarpetaAsync"
+                                disabled="@(_formulario.SeleccionandoCarpeta || _formulario.Ejecutando)">Seleccionar carpeta...</button>
+                    </div>
+                </FormField>
+                <p id="directorio-salida-ayuda" class="form-help">
+                    Carpeta donde se creará la copia experimental: debe ser nueva (con carpeta contenedora existente) o estar vacía, y no puede estar dentro del proyecto original.
+                </p>
+            </div>
+
+            <button type="button" class="btn btn-primary" @onclick="IniciarAsync" disabled="@(!_formulario.PuedeIniciar)">
+                @(_formulario.Ejecutando ? "Migración en curso..." : "Iniciar migración experimental")
+            </button>
+        </Panel>
+    </div>
+
+    <div class="migracion-grid__bitacora">
+        <LogConsole Title="Bitácora de ejecución" Lines="_formulario.Bitacora" EmptyText="La bitácora mostrará el proceso al iniciar la migración." />
+    </div>
+
+    <div class="migracion-grid__progreso">
+        <Panel Title="Progreso de migración">
+            <StatusList Items="Etapas" />
+
+            @if (_formulario.Resultado?.Migracion is { } migracion)
+            {
+                <section class="resultado" aria-labelledby="resultado-titulo">
+                    <h3 id="resultado-titulo" class="resultado__titulo">Resultado</h3>
+                    <KeyValueList Items="ResumenItems(migracion)" />
+
+                    @if (_formulario.MostrarDetalle)
+                    {
+                        <div id="detalle-migracion" class="resultado__detalle">
+                            <KeyValueList Items="DetalleItems(migracion)" />
+                        </div>
+                    }
+                </section>
+
+                <div class="progreso__acciones">
+                    <button type="button" class="btn btn-secondary" @onclick="_formulario.AlternarDetalle"
+                            aria-expanded="@(_formulario.MostrarDetalle ? "true" : "false")" aria-controls="detalle-migracion">
+                        @(_formulario.MostrarDetalle ? "Ocultar detalle" : "Ver detalle")
+                    </button>
+                </div>
+            }
+        </Panel>
+    </div>
+</div>
+
+@code {
+    private MigracionFormulario _formulario = default!;
+    private readonly CancellationTokenSource _cancelacion = new();
+
+    private ProyectoResumen? Seleccionado => _formulario.ProyectoSeleccionado;
+
+    protected override Task OnInitializedAsync()
+    {
+        _formulario = new MigracionFormulario(Servicio, Selector, Logger, accion => InvokeAsync(() =>
+        {
+            accion();
+            StateHasChanged();
+        }));
+
+        return _formulario.CargarAsync();
+    }
+
+    private Task IniciarAsync() => _formulario.IniciarAsync(_cancelacion.Token);
+
+    private IReadOnlyList<StatusListItem> Etapas =>
+        MigrationStages.All
+            .Select(e => new StatusListItem(MigrationStages.Descripcion(e), _formulario.Etapas[e] switch
+            {
+                MigrationStageStatus.EnProceso => StatusListState.EnProceso,
+                MigrationStageStatus.Correcto => StatusListState.Correcto,
+                MigrationStageStatus.Error => StatusListState.Error,
+                _ => StatusListState.Pendiente
+            }))
+            .ToList();
+
+    private static IReadOnlyList<KeyValuePair<string, string>> ResumenItems(MigracionResumen m) =>
+    [
+        new("Proyecto", m.Proyecto),
+        new("Ruta migrada", m.RutaMigrada ?? "No se creó la copia"),
+        new("SDK .NET 10 utilizado", m.SdkUtilizado ?? "—"),
+        new("Estado", EstadoTexto(m.Estado))
+    ];
+
+    private static IReadOnlyList<KeyValuePair<string, string>> DetalleItems(MigracionResumen m) =>
+    [
+        new("Versión origen", m.VersionOrigen),
+        new("Versión destino", m.VersionDestino),
+        new("Fecha de inicio", Fecha(m.FechaInicio)),
+        new("Fecha de finalización", m.FechaFin is { } fin ? Fecha(fin) : "—"),
+        new("Detalle final", m.Detalle ?? "—")
+    ];
+
+    private static string EstadoTexto(string estado) => estado switch
+    {
+        EstadosMigracion.EnProceso => "En proceso",
+        EstadosMigracion.Exitosa => "Exitosa",
+        EstadosMigracion.Fallida => "Fallida",
+        _ => estado
+    };
+
+    // Las fechas se almacenan en UTC (D-16) y se muestran en la hora local del equipo.
+    private static string Fecha(DateTime utc) =>
+        DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+
+    public void Dispose()
+    {
+        _cancelacion.Cancel();
+        _cancelacion.Dispose();
+    }
+}

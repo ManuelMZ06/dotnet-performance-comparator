@@ -223,15 +223,15 @@ Estos elementos se conectarán a información real cuando se resuelvan B-04, B-0
 - **Panel "Acciones":** "Guardar proyecto" (primario), "Cancelar" (secundario) y texto: "Al guardar, el sistema registrará la aplicación y la dejará disponible para el proceso de migración experimental y configuración de evaluaciones."
 
 ### M-03 — Migración experimental a .NET 10 (CU-02)
-- **Panel "Selección y parámetros de migración":** Proyecto base · Versión origen (.NET 8) · Versión destino (.NET 10) · Directorio de salida + botón "Examinar" · botón primario "Iniciar migración experimental".
-- **Panel "Bitácora de ejecución":** `LogConsole` con los mensajes del proceso.
-- **Panel "Progreso de migración":** `StatusList` con pasos y estado (Correcto / En proceso / Pendiente):
-  1. Validación del proyecto
-  2. Respaldo de versión original
-  3. Ejecución de Upgrade Assistant
-  4. Actualización de dependencias
-  5. Build preliminar (.NET 10)
-- Botón secundario "Ver detalle".
+- **Panel "Selección y parámetros de migración":** Proyecto base (`select` con los proyectos registrados, por nombre) · Versión origen (.NET 8) · Versión destino (.NET 10) · Directorio de salida + botón "Examinar" → **implementado como "Seleccionar carpeta..."** (selector nativo de Windows, decisión B-09) · botón primario "Iniciar migración experimental".
+- **Panel "Bitácora de ejecución":** `LogConsole` (panel oscuro con título) con los mensajes del proceso y la salida de `dotnet restore`/`dotnet build`.
+- **Panel "Progreso de migración":** `StatusList` con pasos y estado (Pendiente / En proceso / Correcto / Error). **Pasos implementados (decisión B-10):**
+  1. Validación del proyecto base
+  2. Creación de copia experimental
+  3. Actualización del framework objetivo a .NET 10
+  4. Restauración de dependencias
+  5. Build preliminar .NET 10
+- Resultado (Proyecto, Ruta migrada, SDK .NET 10 utilizado, Estado) y botón secundario "Ver detalle", visibles solo cuando existe un resultado de migración (UI-10).
 
 ### M-04 — Configuración de evaluación (CU-03)
 - **Panel "Datos generales de la evaluación":**
@@ -322,6 +322,8 @@ M-07 ──"Generar reporte comparativo"──► M-08
 | UI-07 | **Componentes creados en M-02:** `OperationMessage`, `StatusList`, `KeyValueList` y `FormField` (etiqueta asociada al control mediante `for`/`id`). Los botones usan las clases CSS `.btn-primary` / `.btn-secondary` de `app.css`; no se creó `AppButton`. | Solo lo necesario para la pantalla; evitar generalización prematura. |
 | UI-08 | **M-02 — comportamiento:** la inspección solo se ejecuta con "Validar ruta"; si la ruta se modifica después de validar, la inspección se descarta (estado Pendiente) y "Guardar proyecto" vuelve a deshabilitarse. Una inspección válida se informa con mensaje Info (no Success), reservando Success para el registro. Tras guardar, el formulario se limpia para evitar registros duplicados accidentales. | Evitar guardar información que no corresponde a la ruta mostrada y no prometer más de lo validado. |
 | UI-09 | **M-02 — "Seleccionar archivo..." (C-04.1):** botón secundario a la derecha del campo "Ruta del proyecto" (apilado debajo en ≤ 600 px); el campo sigue siendo editable. Seleccionar, Validar y Guardar son tres acciones distintas: seleccionar coloca la ruta absoluta, descarta cualquier inspección anterior y **no** valida automáticamente. Cancelar el selector no cambia nada ni muestra mensajes. El botón se deshabilita mientras el selector está abierto. Solo se usa `OperationMessage` si el selector no puede abrirse (Error) o la plataforma no es Windows (Warning). El estado de M-02 vive en `IncorporarProyectoFormulario` (C# puro) para poder probarlo sin frameworks de UI. | Usabilidad sin perder el ingreso manual ni la validación explícita de CU-01. |
+| UI-10 | **M-03 — comportamiento (C-05):** "Seleccionar carpeta..." (a la derecha del campo, apilado en ≤ 600 px) solo rellena el directorio de salida, que sigue siendo editable; nunca inicia la migración. "Iniciar migración experimental" se habilita con proyecto seleccionado y directorio no vacío; las validaciones definitivas ocurren al iniciar. Durante la ejecución se deshabilitan el proyecto, la ruta, el selector y el botón de inicio (texto "Migración en curso..."). Las cinco etapas se actualizan en `StatusList` y la salida de los comandos se agrega a `LogConsole`. Al terminar se muestra `OperationMessage` (éxito o error), el resumen (Proyecto, Ruta migrada, SDK .NET 10 utilizado, Estado) y "Ver detalle"/"Ocultar detalle" (versiones, fechas locales y detalle final) solo si existe un registro de migración. Si no hay proyectos registrados, el `select` se deshabilita y se enlaza a "Incorporar proyecto". El mensaje de éxito no afirma mejoras de rendimiento. El estado vive en `MigracionFormulario` (C# puro, testeable). Al salir de la página se cancela la migración en curso. | Coherencia con M-02 (UI-09) y con el flujo del mockup sin prometer más de lo validado. |
+| UI-11 | **Componentes de M-03:** `LogConsole` (bloque oscuro con título opcional, `role="log"`, monoespaciado, altura fija con scroll interno; las líneas se muestran como texto, nunca como HTML; `flex-direction: column-reverse` mantiene visible la última línea sin JavaScript) y `StatusList` ampliado con el estado **En proceso** (indicador ámbar + texto). Las clases de disposición de formularios compartidas por M-02 y M-03 (`.form-grid`, `.form-row`, `.form-help`, `.input-with-action`) pasan a `app.css`. | Reutilización sin duplicar estilos; accesibilidad. |
 
 ---
 
@@ -336,7 +338,7 @@ Elementos de los mockups que **no están definidos** en `PROJECT_CONTEXT.md` o e
 | B-02 | Logo institucional. | **Resuelta.** Se usa exclusivamente el logo embebido en `docs/mockups/Mockups-Interfaces.drawio`, extraído y guardado como recurso estático en `src/DotNetPerformanceComparator.Web/wwwroot/images/` (p. ej. `logo-umg.webp`). No se descarga ningún logo de Internet ni se mantiene como base64 en componentes Razor o CSS. |
 | B-03 | Gráficos (M-01, M-05, M-07). | **Resuelta.** Componentes Blazor propios basados en SVG, sin librerías NuGet, npm ni JavaScript. Reutilizables, con datos por parámetros y limitados a lo que exigen los mockups. `BarChart` con M-01; `LineChart` solo cuando llegue M-05. |
 
-### 8.2 M-01 Inicio — PENDIENTES
+### 8.2 M-01 Inicio — PENDIENTES (B-07 resuelta)
 M-01 usa estados vacíos (ver sección 5, M-01) hasta que estas brechas se conecten a información real conforme se implementen los CU correspondientes.
 
 | # | Brecha | Comentario |
@@ -344,18 +346,18 @@ M-01 usa estados vacíos (ver sección 5, M-01) hasta que estas brechas se conec
 | B-04 | "Proyecto activo". | El modelo no tiene concepto de proyecto activo. Opción: el último `ProyectoDotNet` registrado. |
 | B-05 | "Último reporte" y filas "Reporte" en "Actividad reciente". | `Reporte` es transitorio y **no se persiste** (decisión de diseño). No hay fuente para estos datos sin cambiar el modelo. |
 | B-06 | "Actividad reciente". | No existe entidad de bitácora/actividad. Podría derivarse de `ProyectoDotNet.FechaRegistro`, `Migracion` y `Ejecucion`, salvo los reportes (B-05). |
-| B-07 | Mensajes de error (RF-14). | Ningún mockup los muestra; se propondrá un estilo coherente con los tokens. Los estados vacíos de M-01 ya quedaron definidos (sección 5). |
+| B-07 | Mensajes de error (RF-14). | **Resuelta.** Los estados vacíos se implementaron con `EmptyState` (M-01, M-02) y los mensajes de estado/error con `OperationMessage` (UI-05). |
 
 ### 8.3 Pantallas de casos de uso — RESUELTAS
 | # | Mockup | Brecha | Decisión |
 |---|---|---|---|
 | B-08 | M-02 | "Tipo de aplicación", "Framework objetivo", "Carpetas clave", "Archivos detectados" no existen en `ProyectoDotNet`. | **Resuelta (C-04).** Son información **transitoria** del resultado de inspección (`ProjectInspectionResult` en Application), mostrada en M-02 y **no persistida**. `ProyectoDotNet` conserva solo Id, Nombre, RutaOriginal, VersionBase, EstadoValidacion y FechaRegistro; no se crean tablas nuevas. |
-| B-09 | M-02 (M-03) | Botones "Examinar carpeta" / "Examinar". | **Resuelta para M-02 (C-04).** Por las restricciones de seguridad del navegador no se obtiene la ruta mediante `<input type="file">`, File System Access API, diálogos nativos ni librerías. El Usuario escribe la **ruta absoluta del `.csproj`** (la herramienta se ejecuta localmente en Windows 11) y el botón "Examinar carpeta" se sustituye por **"Validar ruta"**, que ejecuta la inspección. Evolución técnica justificada del mockup. **Ampliación (C-04.1):** la ruta puede introducirse manualmente o seleccionarse mediante el selector nativo de archivos de Windows ("Seleccionar archivo...") cuando la herramienta se ejecuta localmente en Windows 11. El navegador por sí solo no proporciona la ruta absoluta requerida. La validación continúa siendo una acción independiente. El botón "Examinar" (directorio de salida) de M-03 se tratará en CU-02. |
+| B-09 | M-02 (M-03) | Botones "Examinar carpeta" / "Examinar". | **Resuelta para M-02 (C-04).** Por las restricciones de seguridad del navegador no se obtiene la ruta mediante `<input type="file">`, File System Access API, diálogos nativos ni librerías. El Usuario escribe la **ruta absoluta del `.csproj`** (la herramienta se ejecuta localmente en Windows 11) y el botón "Examinar carpeta" se sustituye por **"Validar ruta"**, que ejecuta la inspección. Evolución técnica justificada del mockup. **Ampliación (C-04.1):** la ruta puede introducirse manualmente o seleccionarse mediante el selector nativo de archivos de Windows ("Seleccionar archivo...") cuando la herramienta se ejecuta localmente en Windows 11. El navegador por sí solo no proporciona la ruta absoluta requerida. La validación continúa siendo una acción independiente. **M-03 (C-05):** el botón "Examinar" del directorio de salida se implementa como **"Seleccionar carpeta..."** con el selector nativo de carpetas de Windows (mismo enfoque); la ruta también puede escribirse manualmente y seleccionar una carpeta no inicia la migración. |
+| B-10 | M-03 | Paso "Ejecución de Upgrade Assistant". | **Resuelta (C-05).** La herramienta realiza una migración experimental controlada (copia + cambio de framework + restore + build) sin Upgrade Assistant; el paso se sustituye por **"Actualización del framework objetivo a .NET 10"** y el progreso usa las cinco etapas de la sección 5 (M-03). La documentación histórica/comparativa sobre Upgrade Assistant no se modifica; la decisión solo afecta a la implementación de la herramienta (ver D-21). |
 
 ### 8.4 Pantallas de casos de uso — PENDIENTES
 | # | Mockup | Brecha | Comentario |
 |---|---|---|---|
-| B-10 | M-03 | Paso "Ejecución de Upgrade Assistant". | La herramienta concreta de migración no está definida en el contexto ("herramientas del ecosistema .NET"). Decidir en CU-02. |
 | B-11 | M-04 | "Nombre de la evaluación" no existe en `ConfiguracionEvaluacion`; M-06 y M-08 lo muestran ("Eval. 01"). | Requiere agregar el campo o definir cómo se identifica una evaluación. Decidir en CU-03. |
 | B-12 | M-04 | Warm-up, Usuarios virtuales, Duración, Ramp-up, Intervalo, Observaciones. | Encajan como `ParametroEvaluacion` (clave/valor); confirmar en CU-03. |
 | B-13 | M-05 | Botón "Detener evaluación". | CU-04 no describe la detención; coherente con "ejecución incompleta no se registra como válida". Confirmar alcance en CU-04. |

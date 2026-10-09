@@ -1,0 +1,78 @@
+.migracion-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    grid-template-areas:
+        "parametros progreso"
+        "bitacora progreso";
+    gap: 1.75rem;
+    align-items: start;
+}
+
+.migracion-grid__parametros {
+    grid-area: parametros;
+}
+
+.migracion-grid__bitacora {
+    grid-area: bitacora;
+}
+
+.migracion-grid__progreso {
+    grid-area: progreso;
+    align-self: stretch;
+}
+
+    .migracion-grid__progreso ::deep .panel {
+        height: 100%;
+    }
+
+.form-grid--proyecto {
+    grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 0.8fr));
+    margin-bottom: 0.4rem;
+}
+
+.resultado {
+    margin-top: 1.5rem;
+    padding: 1rem 1.1rem;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+}
+
+.resultado__titulo {
+    margin-bottom: 0.75rem;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.resultado__detalle {
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.progreso__acciones {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}
+
+@media (max-width: 1200px) {
+    .migracion-grid {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "parametros"
+            "progreso"
+            "bitacora";
+    }
+}
+
+@media (max-width: 600px) {
+    .form-grid--proyecto {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .progreso__acciones .btn,
+    .migracion-grid__parametros .btn-primary {
+        width: 100%;
+    }
+}

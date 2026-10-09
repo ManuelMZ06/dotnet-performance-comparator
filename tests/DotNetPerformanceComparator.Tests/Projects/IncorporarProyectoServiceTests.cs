@@ -31,6 +31,12 @@ public class IncorporarProyectoServiceTests
             Agregados.Add(proyecto);
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyList<ProyectoDotNet>> GetAllAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ProyectoDotNet>>(Agregados);
+
+        public Task<ProyectoDotNet?> GetByIdAsync(int id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Agregados.FirstOrDefault(p => p.Id == id));
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider

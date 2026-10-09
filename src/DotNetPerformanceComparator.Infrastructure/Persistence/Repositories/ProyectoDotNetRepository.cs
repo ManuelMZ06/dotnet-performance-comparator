@@ -22,4 +22,22 @@ public sealed class ProyectoDotNetRepository : IProyectoDotNetRepository
         context.ProyectosDotNet.Add(proyecto);
         await context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<ProyectoDotNet>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.ProyectosDotNet
+            .AsNoTracking()
+            .OrderBy(p => p.Nombre)
+            .ThenBy(p => p.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<ProyectoDotNet?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.ProyectosDotNet
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+    }
 }

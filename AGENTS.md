@@ -1,4 +1,4 @@
-# AGENTS.md — Reglas operativas
+cs# AGENTS.md — Reglas operativas
 
 Reglas que todo agente o desarrollador debe consultar antes de cada tarea en **DotNetPerformanceComparator**.
 

@@ -52,6 +52,7 @@ internal static class NativeMethods
 internal enum FileOpenOptions : uint
 {
     NoChangeDir = 0x00000008,
+    PickFolders = 0x00000020,
     ForceFileSystem = 0x00000040,
     PathMustExist = 0x00000800,
     FileMustExist = 0x00001000

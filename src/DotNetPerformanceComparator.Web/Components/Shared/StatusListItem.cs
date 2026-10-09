@@ -3,6 +3,7 @@ namespace DotNetPerformanceComparator.Web.Components.Shared;
 public enum StatusListState
 {
     Pendiente,
+    EnProceso,
     Correcto,
     Error
 }

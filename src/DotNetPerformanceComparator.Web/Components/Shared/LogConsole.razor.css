@@ -1,0 +1,54 @@
+.log-console {
+    min-width: 0;
+    padding: 1.5rem 1.25rem;
+    background: var(--color-console-bg);
+    border-radius: var(--radius-lg);
+    color: var(--color-console-text);
+}
+
+.log-console__title {
+    margin-bottom: 1rem;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--color-header-text);
+}
+
+.log-console__viewport {
+    display: flex;
+    flex-direction: column-reverse;
+    height: 300px;
+    overflow: auto;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+}
+
+.log-console__lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.log-console__line {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-console-accent);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.log-console__line--empty {
+    color: var(--color-console-text);
+    opacity: 0.8;
+}
+
+@media (max-width: 600px) {
+    .log-console {
+        padding: 1.25rem 1rem;
+        border-radius: 18px;
+    }
+
+    .log-console__viewport {
+        height: 240px;
+    }
+}

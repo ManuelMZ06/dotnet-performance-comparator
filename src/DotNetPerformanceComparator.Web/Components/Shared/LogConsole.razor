@@ -1,0 +1,35 @@
+@* Bitácora monoespaciada. El contenido se muestra como texto (nunca como HTML). *@
+<section class="log-console" aria-label="@(Title ?? "Bitácora")">
+    @if (Title is not null)
+    {
+        <h2 class="log-console__title">@Title</h2>
+    }
+
+    @* column-reverse mantiene visible la última línea sin JavaScript. *@
+    <div class="log-console__viewport" role="log" aria-live="polite" tabindex="0">
+        <div class="log-console__lines">
+            @if (Lines.Count == 0)
+            {
+                <div class="log-console__line log-console__line--empty">@EmptyText</div>
+            }
+            else
+            {
+                @foreach (var line in Lines)
+                {
+                    <div class="log-console__line">&gt; @line</div>
+                }
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Lines { get; set; } = [];
+
+    [Parameter]
+    public string EmptyText { get; set; } = "Sin actividad.";
+}

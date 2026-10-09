@@ -27,6 +27,10 @@
     background: var(--color-status-ok);
 }
 
+.status-list__indicator--enproceso {
+    background: var(--color-status-progress);
+}
+
 .status-list__indicator--error {
     background: var(--color-danger);
 }
