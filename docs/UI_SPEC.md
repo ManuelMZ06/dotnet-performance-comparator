@@ -235,11 +235,13 @@ Estos elementos se conectarán a información real cuando se resuelvan B-04, B-0
 
 ### M-04 — Configuración de evaluación (CU-03)
 - **Panel "Datos generales de la evaluación":**
-  - Campos: Nombre de la evaluación · Proyecto · **Migración .NET 10** (selector añadido, ver UI-12) · Ejecuciones · Warm-up.
+  - Campos: Nombre de la evaluación · Proyecto · **Migración .NET 10** (selector añadido, ver UI-12) · **Ruta / endpoint de prueba** (relativa, placeholder `/api/recurso`) · **Método HTTP** (solo lectura, `GET`) · Ejecuciones (**1–3**, con texto "Se realizarán entre 1 y 3 repeticiones por tipo de prueba y por versión").
   - "Tipo de pruebas": `OptionToggleGroup` con los tipos del catálogo (Carga · Estrés · Concurrencia), selección múltiple (al menos uno).
-  - "Métricas a recopilar": `CheckboxGroup` 3×2 con las métricas del catálogo (CPU · Memoria RAM · Tiempo de respuesta · Latencia · Throughput · Tamaño de la aplicación), al menos una.
-  - Sub-panel "Parámetros específicos": Usuarios virtuales · Duración (s) · Warm-up · Ramp-up (s) · Intervalo · Observaciones (área de texto), todos opcionales (ver B-12).
+  - **Paneles dinámicos de parámetros por tipo** (solo se muestran los de los tipos seleccionados; ver UI-15): **Carga** (Usuarios virtuales · Duración (s) · Warm-up (s) · Ramp-up (s) · Intervalo entre solicitudes (ms)); **Estrés** (Usuarios iniciales · Incremento de usuarios · Usuarios máximos · Duración por nivel (s) · Warm-up (s) · Intervalo entre solicitudes (ms)); **Concurrencia** (Usuarios concurrentes · Rondas · Warm-up (s) · Intervalo entre rondas (ms); sin Ramp-up).
+  - "Métricas a recopilar": `CheckboxGroup` 3×2 con las métricas del catálogo, al menos una (comunes a toda la evaluación).
+  - "Observaciones": área de texto global y opcional al final.
 - **Acciones:** "Guardar" (primario); "Iniciar evaluación" (verde) se muestra **deshabilitado** hasta implementar CU-04 (no navega a M-05).
+- El bloque genérico "Parámetros específicos" del mockup se eliminó; cada tipo de prueba tiene su propio conjunto de parámetros (C-06.1).
 
 ### M-05 — Ejecución de evaluación (CU-04)
 - **Panel "Estado general":** `KeyValueList` (Proyecto, Prueba, Versión evaluada, Ejecución actual "n de N", Estado) + `ProgressBar` con porcentaje.
@@ -327,6 +329,7 @@ M-07 ──"Generar reporte comparativo"──► M-08
 | UI-12 | **M-04 — selector de "Migración .NET 10" (C-06):** añadido respecto al mockup para trazabilidad; depende del proyecto, lista solo migraciones **Exitosas** con etiqueta legible ("Migración #Id — fecha local") y muestra la ruta de la copia como nota secundaria. | El mockup solo mostraba Proyecto; una configuración debe referirse a una migración concreta y reproducible. |
 | UI-13 | **M-04 — comportamiento (C-06):** la validación definitiva la hace Application; M-04 solo gestiona estado de formulario. Al cambiar de proyecto se descarta la migración seleccionada y se recargan solo las migraciones exitosas de ese proyecto; si el proyecto no tiene ninguna, se muestra un aviso y se bloquea el guardado. Los campos pueden iniciar vacíos (sin valores por defecto del mockup). Tras un guardado correcto el formulario se conserva y "Guardar" se deshabilita hasta que el Usuario modifique algún campo (`EstaGuardado`/dirty); cada guardado crea una nueva `ConfiguracionEvaluacion` (no hay edición). Si no hay proyectos, todo el formulario se deshabilita. El estado vive en `ConfiguracionFormulario` (C# puro, testeable). | Coherencia con M-02/M-03; evitar guardados duplicados accidentales sin un sistema de tracking complejo. |
 | UI-14 | **Componentes de M-04 (C-06):** `OptionToggleGroup` (botones conmutables de selección múltiple con `aria-pressed` y marca ✓, no solo color) para tipos de prueba; `CheckboxGroup` (casillas reales en rejilla 3×2 → 2 → 1) para métricas; ambos reciben sus opciones del catálogo. "Iniciar evaluación" usa `.btn-success`. | Selección múltiple accesible; nombres siempre desde el catálogo. |
+| UI-15 | **M-04 — paneles dinámicos de parámetros (C-06.1):** al seleccionar un tipo de prueba se muestra su panel de parámetros; al desmarcarlo se oculta. Los valores pueden permanecer en el estado local durante la edición, pero **solo se persisten los de los tipos seleccionados al guardar**. Carga, Estrés y Concurrencia tienen conjuntos de campos distintos (Concurrencia no tiene Ramp-up). Se añaden "Ruta / endpoint de prueba" (relativa), "Método HTTP: GET" de solo lectura y `Ejecuciones` con `min=1 max=3`; "Observaciones" es un área de texto global. El estado vive en `ConfiguracionFormulario` con un sub-modelo por tipo (`ParametrosCargaForm`/`EstresForm`/`ConcurrenciaForm`), testeable sin framework UI. | Eliminar la ambigüedad de parámetros compartidos; cada parámetro pertenece a un tipo de prueba. |
 
 ---
 
@@ -355,7 +358,7 @@ M-01 usa estados vacíos (ver sección 5, M-01) hasta que estas brechas se conec
 | # | Mockup | Brecha | Decisión |
 |---|---|---|---|
 | B-11 | M-04 | "Nombre de la evaluación" no existe en `ConfiguracionEvaluacion`. | **Resuelta (C-06).** `ConfiguracionEvaluacion.Nombre` se agrega de forma **permanente** (persistido, obligatorio, sin unicidad; se reutilizará en M-06 y M-08). Además M-04 incorpora un selector de **Migración .NET 10** como evolución del mockup para garantizar trazabilidad experimental: cada configuración queda asociada a una migración exitosa concreta (ver D-27, UI-12). |
-| B-12 | M-04 | Warm-up, Usuarios virtuales, Duración, Ramp-up, Intervalo, Observaciones. | **Resuelta (C-06).** Se persisten como filas `ParametroEvaluacion` (clave/valor) con claves internas estables (`ClavesParametroEvaluacion`), sin columnas nuevas en `ConfiguracionEvaluacion`. Solo se crea fila para los parámetros con valor (ver D-28). |
+| B-12 | M-04 | Warm-up, Usuarios virtuales, Duración, Ramp-up, Intervalo, Observaciones. | **Resuelta (C-06; actualizada en C-06.1).** Los parámetros se almacenan como `ParametroEvaluacion`, asociados **explícitamente a la `ConfiguracionPrueba`** correspondiente mediante la clave compuesta `(ConfiguracionId, TipoPruebaId)`. **Cada tipo de prueba (Carga, Estrés, Concurrencia) tiene un conjunto de parámetros diferente** (ver D-30 a D-33). `Observaciones` describe la evaluación completa y pasa a ser `ConfiguracionEvaluacion.Observaciones` (ya no es un parámetro). Claves internas en `ClavesParametroCarga`/`Estres`/`Concurrencia`. |
 
 | # | Mockup | Brecha | Decisión |
 |---|---|---|---|

@@ -1,14 +1,18 @@
-.config-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-    gap: 1.75rem;
-    align-items: start;
-}
-
 .form-grid--general {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     margin-bottom: 0.4rem;
 }
+
+.parametros-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin-top: 1.5rem;
+}
+
+    .parametros-grid .subpanel {
+        margin: 0;
+    }
 
 .config-section {
     margin-top: 1.5rem;
@@ -47,8 +51,12 @@
     color: #ffffff;
 }
 
-@media (max-width: 1200px) {
-    .config-grid {
+@media (max-width: 1000px) {
+    .form-grid--general {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .parametros-grid {
         grid-template-columns: minmax(0, 1fr);
     }
 }

@@ -13,8 +13,15 @@ public class ConfiguracionEvaluacionConfiguration : IEntityTypeConfiguration<Con
 
         builder.Property(c => c.Nombre).IsRequired();
         builder.Property(c => c.NumeroEjecuciones).IsRequired();
+        builder.Property(c => c.RutaObjetivo).IsRequired();
+        // Observaciones: nullable, sin longitud máxima.
         builder.Property(c => c.FechaCreacion).IsRequired();
         builder.Property(c => c.Estado).IsRequired();
+
+        // La regla 1..3 proviene del alcance de investigación (no es un límite técnico arbitrario).
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_ConfiguracionEvaluacion_NumeroEjecuciones",
+            "\"NumeroEjecuciones\" >= 1 AND \"NumeroEjecuciones\" <= 3"));
 
         builder.HasOne(c => c.Proyecto)
             .WithMany(p => p.ConfiguracionesEvaluacion)

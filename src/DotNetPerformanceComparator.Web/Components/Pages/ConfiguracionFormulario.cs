@@ -1,12 +1,13 @@
 using DotNetPerformanceComparator.Application.Evaluations.Configuration;
+using DotNetPerformanceComparator.Domain.Constants;
 using DotNetPerformanceComparator.Web.Components.Shared;
 
 namespace DotNetPerformanceComparator.Web.Components.Pages;
 
 /// <summary>
 /// Estado e interacción de M-04 (CU-03). La validación definitiva la hace Application; aquí solo
-/// se gestiona el estado del formulario (selección dependiente, selección múltiple, dirty/guardado).
-/// Cada guardado correcto crea una nueva configuración; no hay edición del registro guardado.
+/// se gestiona el estado del formulario. Cada tipo de prueba tiene su propio conjunto de parámetros;
+/// solo se envían los de los tipos seleccionados. Cada guardado correcto crea una nueva configuración.
 /// </summary>
 public sealed class ConfiguracionFormulario
 {
@@ -17,24 +18,30 @@ public sealed class ConfiguracionFormulario
     private int? _proyectoId;
     private int? _migracionId;
     private int? _numeroEjecuciones;
-    private string? _warmUp;
-    private string? _usuariosVirtuales;
-    private string? _duracionSegundos;
-    private string? _rampUpSegundos;
-    private string? _intervalo;
+    private string? _rutaObjetivo;
     private string? _observaciones;
 
     public ConfiguracionFormulario(IConfigurarEvaluacionService servicio, ILogger logger)
     {
         _servicio = servicio;
         _logger = logger;
+        Carga = new ParametrosCargaForm(MarcarEditable);
+        Estres = new ParametrosEstresForm(MarcarEditable);
+        Concurrencia = new ParametrosConcurrenciaForm(MarcarEditable);
     }
 
-    public EvaluacionConfigurationData Datos { get; private set; } =
-        new([], [], [], []);
+    public const string MetodoHttp = ConfigurarEvaluacionService.MetodoHttp;
+    public const int MinEjecuciones = ConfigurarEvaluacionService.MinEjecuciones;
+    public const int MaxEjecuciones = ConfigurarEvaluacionService.MaxEjecuciones;
+
+    public EvaluacionConfigurationData Datos { get; private set; } = new([], [], [], []);
 
     public HashSet<int> TipoPruebaIds { get; } = [];
     public HashSet<int> MetricaIds { get; } = [];
+
+    public ParametrosCargaForm Carga { get; }
+    public ParametrosEstresForm Estres { get; }
+    public ParametrosConcurrenciaForm Concurrencia { get; }
 
     public bool Guardando { get; private set; }
     public bool EstaGuardado { get; private set; }
@@ -42,19 +49,12 @@ public sealed class ConfiguracionFormulario
     public string? Mensaje { get; private set; }
     public OperationMessageKind MensajeTipo { get; private set; }
 
-    // Campos: cada cambio marca el formulario como editable (dirty) de nuevo.
     public string? Nombre { get => _nombre; set => Asignar(ref _nombre, value); }
     public int? NumeroEjecuciones { get => _numeroEjecuciones; set => Asignar(ref _numeroEjecuciones, value); }
-    public string? WarmUp { get => _warmUp; set => Asignar(ref _warmUp, value); }
-    public string? UsuariosVirtuales { get => _usuariosVirtuales; set => Asignar(ref _usuariosVirtuales, value); }
-    public string? DuracionSegundos { get => _duracionSegundos; set => Asignar(ref _duracionSegundos, value); }
-    public string? RampUpSegundos { get => _rampUpSegundos; set => Asignar(ref _rampUpSegundos, value); }
-    public string? Intervalo { get => _intervalo; set => Asignar(ref _intervalo, value); }
+    public string? RutaObjetivo { get => _rutaObjetivo; set => Asignar(ref _rutaObjetivo, value); }
     public string? Observaciones { get => _observaciones; set => Asignar(ref _observaciones, value); }
-
     public int? MigracionId { get => _migracionId; set => Asignar(ref _migracionId, value); }
 
-    /// <summary>Al cambiar de proyecto se descarta la migración seleccionada (puede ser de otro proyecto).</summary>
     public int? ProyectoId
     {
         get => _proyectoId;
@@ -70,17 +70,19 @@ public sealed class ConfiguracionFormulario
     }
 
     public IReadOnlyList<MigracionOpcion> MigracionesDelProyecto =>
-        _proyectoId is { } id
-            ? Datos.MigracionesExitosas.Where(m => m.ProyectoId == id).ToList()
-            : [];
+        _proyectoId is { } id ? Datos.MigracionesExitosas.Where(m => m.ProyectoId == id).ToList() : [];
 
     public bool HayProyectos => Datos.Proyectos.Count > 0;
-
     public bool ProyectoSinMigraciones => _proyectoId is not null && MigracionesDelProyecto.Count == 0;
+    public bool PuedeGuardar => !Guardando && !EstaGuardado && HayProyectos && !ProyectoSinMigraciones;
 
-    public bool PuedeGuardar => !Guardando && EstaEditable && HayProyectos && !ProyectoSinMigraciones;
+    public int? CargaId => IdTipo(TiposPruebaConocidos.Carga);
+    public int? EstresId => IdTipo(TiposPruebaConocidos.Estres);
+    public int? ConcurrenciaId => IdTipo(TiposPruebaConocidos.Concurrencia);
 
-    private bool EstaEditable => !EstaGuardado;
+    public bool MuestraCarga => CargaId is { } id && TipoPruebaIds.Contains(id);
+    public bool MuestraEstres => EstresId is { } id && TipoPruebaIds.Contains(id);
+    public bool MuestraConcurrencia => ConcurrenciaId is { } id && TipoPruebaIds.Contains(id);
 
     public async Task CargarAsync()
     {
@@ -115,13 +117,11 @@ public sealed class ConfiguracionFormulario
         try
         {
             var request = new ConfigurarEvaluacionRequest(
-                _nombre,
-                _proyectoId,
-                _migracionId,
-                _numeroEjecuciones,
-                TipoPruebaIds.ToList(),
-                MetricaIds.ToList(),
-                new ParametrosEvaluacionInput(_warmUp, _usuariosVirtuales, _duracionSegundos, _rampUpSegundos, _intervalo, _observaciones));
+                _nombre, _proyectoId, _migracionId, _numeroEjecuciones, _rutaObjetivo, _observaciones,
+                TipoPruebaIds.ToList(), MetricaIds.ToList(),
+                MuestraCarga ? Carga.ToInput() : null,
+                MuestraEstres ? Estres.ToInput() : null,
+                MuestraConcurrencia ? Concurrencia.ToInput() : null);
 
             var resultado = await _servicio.GuardarAsync(request);
             if (resultado.Exito)
@@ -146,6 +146,9 @@ public sealed class ConfiguracionFormulario
         }
     }
 
+    private int? IdTipo(string nombre) =>
+        Datos.TiposPrueba.FirstOrDefault(t => t.Nombre == nombre)?.Id;
+
     private void Alternar(HashSet<int> conjunto, int id)
     {
         if (!conjunto.Remove(id))
@@ -165,7 +168,6 @@ public sealed class ConfiguracionFormulario
         }
     }
 
-    /// <summary>Tras guardar, cualquier cambio vuelve a habilitar el guardado como una nueva configuración.</summary>
     private void MarcarEditable()
     {
         if (EstaGuardado)
@@ -179,5 +181,58 @@ public sealed class ConfiguracionFormulario
     {
         MensajeTipo = tipo;
         Mensaje = mensaje;
+    }
+
+    /// <summary>Campo de texto que notifica cada cambio.</summary>
+    public abstract class ParametrosForm(Action onChange)
+    {
+        private readonly Action _onChange = onChange;
+
+        protected string? Set(ref string? campo, string? valor)
+        {
+            if (campo != valor)
+            {
+                campo = valor;
+                _onChange();
+            }
+
+            return campo;
+        }
+    }
+
+    public sealed class ParametrosCargaForm(Action onChange) : ParametrosForm(onChange)
+    {
+        private string? _uv, _dur, _warm, _ramp, _int;
+        public string? UsuariosVirtuales { get => _uv; set => Set(ref _uv, value); }
+        public string? DuracionSegundos { get => _dur; set => Set(ref _dur, value); }
+        public string? WarmUpSegundos { get => _warm; set => Set(ref _warm, value); }
+        public string? RampUpSegundos { get => _ramp; set => Set(ref _ramp, value); }
+        public string? IntervaloSolicitudesMs { get => _int; set => Set(ref _int, value); }
+
+        public ParametrosCargaInput ToInput() => new(UsuariosVirtuales, DuracionSegundos, WarmUpSegundos, RampUpSegundos, IntervaloSolicitudesMs);
+    }
+
+    public sealed class ParametrosEstresForm(Action onChange) : ParametrosForm(onChange)
+    {
+        private string? _ini, _inc, _max, _dur, _warm, _int;
+        public string? UsuariosIniciales { get => _ini; set => Set(ref _ini, value); }
+        public string? IncrementoUsuarios { get => _inc; set => Set(ref _inc, value); }
+        public string? UsuariosMaximos { get => _max; set => Set(ref _max, value); }
+        public string? DuracionNivelSegundos { get => _dur; set => Set(ref _dur, value); }
+        public string? WarmUpSegundos { get => _warm; set => Set(ref _warm, value); }
+        public string? IntervaloSolicitudesMs { get => _int; set => Set(ref _int, value); }
+
+        public ParametrosEstresInput ToInput() => new(UsuariosIniciales, IncrementoUsuarios, UsuariosMaximos, DuracionNivelSegundos, WarmUpSegundos, IntervaloSolicitudesMs);
+    }
+
+    public sealed class ParametrosConcurrenciaForm(Action onChange) : ParametrosForm(onChange)
+    {
+        private string? _uc, _rondas, _warm, _int;
+        public string? UsuariosConcurrentes { get => _uc; set => Set(ref _uc, value); }
+        public string? Rondas { get => _rondas; set => Set(ref _rondas, value); }
+        public string? WarmUpSegundos { get => _warm; set => Set(ref _warm, value); }
+        public string? IntervaloRondasMs { get => _int; set => Set(ref _int, value); }
+
+        public ParametrosConcurrenciaInput ToInput() => new(UsuariosConcurrentes, Rondas, WarmUpSegundos, IntervaloRondasMs);
     }
 }

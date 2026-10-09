@@ -37,6 +37,7 @@ public class AppDbContextTests : IDisposable
             Migracion = NuevaMigracion(proyecto),
             Nombre = "Evaluación",
             NumeroEjecuciones = 1,
+            RutaObjetivo = "/",
             FechaCreacion = DateTime.UtcNow,
             Estado = "Configurada"
         };
@@ -101,12 +102,17 @@ public class AppDbContextTests : IDisposable
                 Migracion = proyecto.Migraciones.First(),
                 Nombre = "Evaluación comparativa 01",
                 NumeroEjecuciones = 3,
+                RutaObjetivo = "/api/productos",
+                Observaciones = "Condiciones equivalentes",
                 FechaCreacion = DateTime.UtcNow,
                 Estado = "Configurada"
             };
-            configuracion.ConfiguracionesPrueba.Add(new ConfiguracionPrueba { TipoPruebaId = 1 });
+            configuracion.ConfiguracionesPrueba.Add(new ConfiguracionPrueba
+            {
+                TipoPruebaId = 1,
+                Parametros = { new ParametroEvaluacion { TipoPruebaId = 1, Clave = "UsuariosVirtuales", Valor = "50" } }
+            });
             configuracion.ConfiguracionesMetrica.Add(new ConfiguracionMetrica { MetricaId = 3 });
-            configuracion.Parametros.Add(new ParametroEvaluacion { Clave = "UsuariosConcurrentes", Valor = "50" });
 
             var ejecucion = new Ejecucion
             {
@@ -127,8 +133,8 @@ public class AppDbContextTests : IDisposable
         var cargado = verificacion.ProyectosDotNet
             .Include(p => p.Migraciones)
             .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.ConfiguracionesPrueba).ThenInclude(cp => cp.TipoPrueba)
+            .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.ConfiguracionesPrueba).ThenInclude(cp => cp.Parametros)
             .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.ConfiguracionesMetrica).ThenInclude(cm => cm.Metrica)
-            .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.Parametros)
             .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.Ejecuciones).ThenInclude(e => e.Condiciones)
             .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.Ejecuciones).ThenInclude(e => e.Resultados).ThenInclude(r => r.Metrica)
             .AsSplitQuery()
@@ -136,9 +142,11 @@ public class AppDbContextTests : IDisposable
 
         Assert.Single(cargado.Migraciones);
         var config = Assert.Single(cargado.ConfiguracionesEvaluacion);
-        Assert.Equal("Carga", Assert.Single(config.ConfiguracionesPrueba).TipoPrueba.Nombre);
+        var prueba = Assert.Single(config.ConfiguracionesPrueba);
+        Assert.Equal("Carga", prueba.TipoPrueba.Nombre);
+        Assert.Equal("UsuariosVirtuales", Assert.Single(prueba.Parametros).Clave);
         Assert.Equal("Tiempo de respuesta", Assert.Single(config.ConfiguracionesMetrica).Metrica.Nombre);
-        Assert.Equal("UsuariosConcurrentes", Assert.Single(config.Parametros).Clave);
+        Assert.Equal("/api/productos", config.RutaObjetivo);
         var ejecucionCargada = Assert.Single(config.Ejecuciones);
         Assert.Equal("Windows 11", Assert.Single(ejecucionCargada.Condiciones).Valor);
         var resultado = Assert.Single(ejecucionCargada.Resultados);
@@ -202,6 +210,7 @@ public class AppDbContextTests : IDisposable
                 Migracion = NuevaMigracion(proyecto),
                 Nombre = "Evaluación",
                 NumeroEjecuciones = 1,
+                RutaObjetivo = "/",
                 FechaCreacion = DateTime.UtcNow,
                 Estado = "Configurada"
             };

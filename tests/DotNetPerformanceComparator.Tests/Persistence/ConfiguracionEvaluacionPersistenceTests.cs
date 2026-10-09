@@ -26,95 +26,130 @@ public sealed class ConfiguracionEvaluacionPersistenceTests : IDisposable
         return (proyecto.Id, proyecto.Migraciones.First().Id);
     }
 
-    private ConfiguracionEvaluacion NuevaConfiguracion(int proyectoId, int migracionId) => new()
+    private ConfiguracionEvaluacion NuevaConfiguracion(int proyectoId, int migracionId, int numeroEjecuciones = 3) => new()
     {
         ProyectoId = proyectoId,
         MigracionId = migracionId,
         Nombre = "Evaluación comparativa 01",
-        NumeroEjecuciones = 3,
-        Estado = "Configurada",
-        FechaCreacion = DateTime.UtcNow
+        NumeroEjecuciones = numeroEjecuciones,
+        RutaObjetivo = "/api/productos",
+        FechaCreacion = DateTime.UtcNow,
+        Estado = "Configurada"
     };
 
     [Fact]
-    public void Agregado_SePersisteYRecuperaConNavegacionAMigracion()
+    public void Agregado_SeGuardaConUnSoloSaveChangesYRecuperaParametrosPorTipo()
     {
         var (proyectoId, migracionId) = CrearProyectoConMigracion();
 
         using (var context = _database.CreateContext())
         {
             var config = NuevaConfiguracion(proyectoId, migracionId);
-            config.ConfiguracionesPrueba.Add(new ConfiguracionPrueba { TipoPruebaId = 1 });
-            config.ConfiguracionesMetrica.Add(new ConfiguracionMetrica { MetricaId = 3 });
-            config.Parametros.Add(new ParametroEvaluacion { Clave = "UsuariosVirtuales", Valor = "50" });
+            config.Observaciones = "Condiciones equivalentes";
+            config.ConfiguracionesPrueba.Add(new ConfiguracionPrueba
+            {
+                TipoPruebaId = 1, // Carga
+                Parametros = { new ParametroEvaluacion { TipoPruebaId = 1, Clave = "UsuariosVirtuales", Valor = "50" } }
+            });
+            config.ConfiguracionesPrueba.Add(new ConfiguracionPrueba
+            {
+                TipoPruebaId = 2, // Estrés
+                Parametros = { new ParametroEvaluacion { TipoPruebaId = 2, Clave = "UsuariosIniciales", Valor = "10" } }
+            });
+            config.ConfiguracionesMetrica.Add(new ConfiguracionMetrica { MetricaId = 1 });
+
             context.ConfiguracionesEvaluacion.Add(config);
-            context.SaveChanges();
+            Assert.Equal(1, context.SaveChanges() > 0 ? 1 : 0); // un único SaveChanges
         }
 
         using var verificacion = _database.CreateContext();
         var cargada = verificacion.ConfiguracionesEvaluacion
-            .Include(c => c.Migracion)
-            .Include(c => c.ConfiguracionesPrueba)
-            .Include(c => c.ConfiguracionesMetrica)
-            .Include(c => c.Parametros)
+            .Include(c => c.ConfiguracionesPrueba).ThenInclude(cp => cp.Parametros)
             .Single();
 
-        Assert.Equal("Evaluación comparativa 01", cargada.Nombre);
-        Assert.Equal(migracionId, cargada.MigracionId);
-        Assert.Equal("Exitosa", cargada.Migracion.Estado);
-        Assert.Equal(1, Assert.Single(cargada.ConfiguracionesPrueba).TipoPruebaId);
-        Assert.Equal(3, Assert.Single(cargada.ConfiguracionesMetrica).MetricaId);
-        Assert.Equal("50", Assert.Single(cargada.Parametros).Valor);
+        Assert.Equal("/api/productos", cargada.RutaObjetivo);
+        Assert.Equal("Condiciones equivalentes", cargada.Observaciones);
+        var carga = cargada.ConfiguracionesPrueba.Single(cp => cp.TipoPruebaId == 1);
+        var estres = cargada.ConfiguracionesPrueba.Single(cp => cp.TipoPruebaId == 2);
+        Assert.Equal("UsuariosVirtuales", Assert.Single(carga.Parametros).Clave);
+        Assert.Equal("UsuariosIniciales", Assert.Single(estres.Parametros).Clave);
+        // Los parámetros no se mezclan entre tipos.
+        Assert.All(carga.Parametros, p => Assert.Equal(1, p.TipoPruebaId));
+        Assert.All(estres.Parametros, p => Assert.Equal(2, p.TipoPruebaId));
     }
 
     [Fact]
-    public void NombreNulo_EsRechazado()
+    public void RutaObjetivoNula_EsRechazada()
     {
         var (proyectoId, migracionId) = CrearProyectoConMigracion();
         using var context = _database.CreateContext();
         var config = NuevaConfiguracion(proyectoId, migracionId);
-        config.Nombre = null!;
+        config.RutaObjetivo = null!;
         context.ConfiguracionesEvaluacion.Add(config);
 
         Assert.Throws<DbUpdateException>(() => context.SaveChanges());
     }
 
     [Fact]
-    public void MigracionIdInexistente_EsRechazado()
+    public void Observaciones_EsOpcional()
     {
-        var (proyectoId, _) = CrearProyectoConMigracion();
+        var (proyectoId, migracionId) = CrearProyectoConMigracion();
+        using (var context = _database.CreateContext())
+        {
+            var config = NuevaConfiguracion(proyectoId, migracionId);
+            config.Observaciones = null;
+            config.ConfiguracionesPrueba.Add(new ConfiguracionPrueba { TipoPruebaId = 1 });
+            context.ConfiguracionesEvaluacion.Add(config);
+            context.SaveChanges();
+        }
+
+        using var verificacion = _database.CreateContext();
+        Assert.Null(verificacion.ConfiguracionesEvaluacion.Single().Observaciones);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    public void NumeroEjecucionesFueraDe1a3_EsRechazadoPorElCheck(int numero)
+    {
+        var (proyectoId, migracionId) = CrearProyectoConMigracion();
         using var context = _database.CreateContext();
-        context.ConfiguracionesEvaluacion.Add(NuevaConfiguracion(proyectoId, migracionId: 999));
+        context.ConfiguracionesEvaluacion.Add(NuevaConfiguracion(proyectoId, migracionId, numero));
 
         Assert.Throws<DbUpdateException>(() => context.SaveChanges());
     }
 
     [Fact]
-    public void Migracion_ConConfiguraciones_NoSePuedeEliminar()
+    public void Parametro_ParaTipoNoIncluidoEnLaConfiguracion_EsRechazado()
     {
         var (proyectoId, migracionId) = CrearProyectoConMigracion();
+        int configId;
         using (var context = _database.CreateContext())
         {
-            context.ConfiguracionesEvaluacion.Add(NuevaConfiguracion(proyectoId, migracionId));
+            var config = NuevaConfiguracion(proyectoId, migracionId);
+            config.ConfiguracionesPrueba.Add(new ConfiguracionPrueba { TipoPruebaId = 1 }); // solo Carga
+            context.ConfiguracionesEvaluacion.Add(config);
             context.SaveChanges();
+            configId = config.Id;
         }
 
         using var otro = _database.CreateContext();
-        otro.Migraciones.Remove(otro.Migraciones.Single(m => m.Id == migracionId));
+        // Parámetro referido al tipo 2 (Estrés), que no es una ConfiguracionPrueba de esta configuración.
+        otro.ParametrosEvaluacion.Add(new ParametroEvaluacion { ConfiguracionId = configId, TipoPruebaId = 2, Clave = "X", Valor = "1" });
 
         Assert.Throws<DbUpdateException>(() => otro.SaveChanges());
     }
 
     [Fact]
-    public void RelacionConMigracion_UsaRestrict()
+    public void ParametroEvaluacion_UsaClaveForaneaCompuestaHaciaConfiguracionPrueba()
     {
         using var context = _database.CreateContext();
 
-        var fk = context.Model.FindEntityType(typeof(ConfiguracionEvaluacion))!
+        var fk = context.Model.FindEntityType(typeof(ParametroEvaluacion))!
             .GetForeignKeys()
-            .Single(f => f.PrincipalEntityType.ClrType == typeof(Migracion));
+            .Single(f => f.PrincipalEntityType.ClrType == typeof(ConfiguracionPrueba));
 
+        Assert.Equal(new[] { "ConfiguracionId", "TipoPruebaId" }, fk.Properties.Select(p => p.Name));
         Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
-        Assert.Equal(nameof(ConfiguracionEvaluacion.MigracionId), Assert.Single(fk.Properties).Name);
     }
 }

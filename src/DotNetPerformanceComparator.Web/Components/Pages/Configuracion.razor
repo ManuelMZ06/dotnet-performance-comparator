@@ -12,94 +12,155 @@
 <OperationMessage Kind="_formulario.MensajeTipo" Message="@_formulario.Mensaje" />
 
 <Panel Title="Datos generales de la evaluación">
-    <div class="config-grid">
-        <div class="config-grid__general">
-            <div class="form-grid form-grid--general">
-                <FormField Label="Nombre de la evaluación" For="nombre-evaluacion">
-                    <input id="nombre-evaluacion" class="form-control" @bind="_formulario.Nombre" @bind:event="oninput"
-                           disabled="@(!_formulario.HayProyectos)" autocomplete="off" />
-                </FormField>
-                <FormField Label="Proyecto" For="proyecto">
-                    <select id="proyecto" class="form-control" @bind="_formulario.ProyectoId" disabled="@(!_formulario.HayProyectos)">
-                        <option value="">@(_formulario.HayProyectos ? "Seleccione un proyecto" : "Sin proyectos registrados")</option>
-                        @foreach (var proyecto in _formulario.Datos.Proyectos)
-                        {
-                            <option value="@proyecto.Id">@proyecto.Nombre</option>
-                        }
-                    </select>
-                </FormField>
-                <FormField Label="Migración .NET 10" For="migracion">
-                    <select id="migracion" class="form-control" @bind="_formulario.MigracionId"
-                            disabled="@(_formulario.ProyectoId is null || _formulario.ProyectoSinMigraciones)">
-                        <option value="">Seleccione una migración</option>
-                        @foreach (var migracion in _formulario.MigracionesDelProyecto)
-                        {
-                            <option value="@migracion.Id">@EtiquetaMigracion(migracion)</option>
-                        }
-                    </select>
-                </FormField>
-                <FormField Label="Ejecuciones" For="ejecuciones">
-                    <input id="ejecuciones" type="number" min="1" step="1" class="form-control"
-                           @bind="_formulario.NumeroEjecuciones" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
-                </FormField>
-            </div>
-
-            @if (_formulario.ProyectoSinMigraciones)
-            {
-                <p class="form-help form-help--warning">El proyecto seleccionado no tiene una migración .NET 10 exitosa disponible. Realice una migración antes de configurar la evaluación.</p>
-            }
-            else if (_formulario.MigracionId is { } migracionId && RutaDe(migracionId) is { } ruta)
-            {
-                <p class="form-help">Copia experimental .NET 10: @ruta</p>
-            }
-
-            <section class="config-section" aria-labelledby="tipos-titulo">
-                <h3 id="tipos-titulo" class="config-section__title">Tipo de pruebas</h3>
-                <OptionToggleGroup Label="Tipo de pruebas"
-                                   Options="Tipos" Selected="_formulario.TipoPruebaIds"
-                                   OnToggle="_formulario.AlternarTipoPrueba" Disabled="@(!_formulario.HayProyectos)" />
-            </section>
-
-            <section class="config-section" aria-labelledby="metricas-titulo">
-                <h3 id="metricas-titulo" class="config-section__title">Métricas a recopilar</h3>
-                <CheckboxGroup Label="Métricas a recopilar"
-                               Options="Metricas" Selected="_formulario.MetricaIds"
-                               OnToggle="_formulario.AlternarMetrica" Disabled="@(!_formulario.HayProyectos)" />
-            </section>
-        </div>
-
-        <div class="config-grid__parametros">
-            <section class="subpanel" aria-labelledby="parametros-titulo">
-                <h3 id="parametros-titulo" class="subpanel__title">Parámetros específicos</h3>
-                <div class="form-grid form-grid--2">
-                    <FormField Label="Usuarios virtuales" For="usuarios-virtuales">
-                        <input id="usuarios-virtuales" type="number" min="1" step="1" class="form-control"
-                               @bind="_formulario.UsuariosVirtuales" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
-                    </FormField>
-                    <FormField Label="Duración (s)" For="duracion">
-                        <input id="duracion" type="number" min="1" step="1" class="form-control"
-                               @bind="_formulario.DuracionSegundos" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
-                    </FormField>
-                    <FormField Label="Warm-up" For="warm-up">
-                        <input id="warm-up" type="number" min="0" step="1" class="form-control"
-                               @bind="_formulario.WarmUp" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
-                    </FormField>
-                    <FormField Label="Ramp-up (s)" For="ramp-up">
-                        <input id="ramp-up" type="number" min="0" step="1" class="form-control"
-                               @bind="_formulario.RampUpSegundos" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
-                    </FormField>
-                    <FormField Label="Intervalo" For="intervalo">
-                        <input id="intervalo" type="number" min="1" step="1" class="form-control"
-                               @bind="_formulario.Intervalo" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)" />
-                    </FormField>
-                </div>
-                <FormField Label="Observaciones" For="observaciones">
-                    <textarea id="observaciones" class="form-control config-textarea" rows="3"
-                              @bind="_formulario.Observaciones" @bind:event="oninput" disabled="@(!_formulario.HayProyectos)"></textarea>
-                </FormField>
-            </section>
-        </div>
+    <div class="form-grid form-grid--general">
+        <FormField Label="Nombre de la evaluación" For="nombre-evaluacion">
+            <input id="nombre-evaluacion" class="form-control" @bind="_formulario.Nombre" @bind:event="oninput"
+                   disabled="@Deshabilitado" autocomplete="off" />
+        </FormField>
+        <FormField Label="Proyecto" For="proyecto">
+            <select id="proyecto" class="form-control" @bind="_formulario.ProyectoId" disabled="@Deshabilitado">
+                <option value="">@(_formulario.HayProyectos ? "Seleccione un proyecto" : "Sin proyectos registrados")</option>
+                @foreach (var proyecto in _formulario.Datos.Proyectos)
+                {
+                    <option value="@proyecto.Id">@proyecto.Nombre</option>
+                }
+            </select>
+        </FormField>
+        <FormField Label="Migración .NET 10" For="migracion">
+            <select id="migracion" class="form-control" @bind="_formulario.MigracionId"
+                    disabled="@(_formulario.ProyectoId is null || _formulario.ProyectoSinMigraciones)">
+                <option value="">Seleccione una migración</option>
+                @foreach (var migracion in _formulario.MigracionesDelProyecto)
+                {
+                    <option value="@migracion.Id">@EtiquetaMigracion(migracion)</option>
+                }
+            </select>
+        </FormField>
+        <FormField Label="Ruta / endpoint de prueba" For="ruta-objetivo">
+            <input id="ruta-objetivo" class="form-control" @bind="_formulario.RutaObjetivo" @bind:event="oninput"
+                   disabled="@Deshabilitado" placeholder="/api/recurso" aria-describedby="ruta-objetivo-ayuda"
+                   autocomplete="off" spellcheck="false" />
+        </FormField>
+        <FormField Label="Método HTTP" For="metodo-http">
+            <input id="metodo-http" class="form-control" readonly value="@ConfiguracionFormulario.MetodoHttp" />
+        </FormField>
+        <FormField Label="Ejecuciones" For="ejecuciones">
+            <input id="ejecuciones" type="number" min="@ConfiguracionFormulario.MinEjecuciones" max="@ConfiguracionFormulario.MaxEjecuciones" step="1"
+                   class="form-control" @bind="_formulario.NumeroEjecuciones" @bind:event="oninput" disabled="@Deshabilitado"
+                   aria-describedby="ejecuciones-ayuda" />
+        </FormField>
     </div>
+
+    <p id="ruta-objetivo-ayuda" class="form-help form-row">Ruta relativa de la aplicación (comienza con «/»); CU-04 la solicitará con GET en cada versión.</p>
+    <p id="ejecuciones-ayuda" class="form-help">Se realizarán entre @ConfiguracionFormulario.MinEjecuciones y @ConfiguracionFormulario.MaxEjecuciones repeticiones por tipo de prueba y por versión.</p>
+
+    @if (_formulario.ProyectoSinMigraciones)
+    {
+        <p class="form-help form-help--warning">El proyecto seleccionado no tiene una migración .NET 10 exitosa disponible. Realice una migración antes de configurar la evaluación.</p>
+    }
+    else if (_formulario.MigracionId is { } migracionId && RutaDe(migracionId) is { } ruta)
+    {
+        <p class="form-help">Copia experimental .NET 10: @ruta</p>
+    }
+
+    <section class="config-section" aria-labelledby="tipos-titulo">
+        <h3 id="tipos-titulo" class="config-section__title">Tipo de pruebas</h3>
+        <OptionToggleGroup Label="Tipo de pruebas"
+                           Options="Tipos" Selected="_formulario.TipoPruebaIds"
+                           OnToggle="_formulario.AlternarTipoPrueba" Disabled="@Deshabilitado" />
+    </section>
+
+    @if (_formulario.MuestraCarga || _formulario.MuestraEstres || _formulario.MuestraConcurrencia)
+    {
+        <div class="parametros-grid">
+            @if (_formulario.MuestraCarga)
+            {
+                <section class="subpanel" aria-labelledby="carga-titulo">
+                    <h3 id="carga-titulo" class="subpanel__title">Parámetros · Carga</h3>
+                    <div class="form-grid form-grid--2">
+                        <FormField Label="Usuarios virtuales" For="carga-uv">
+                            <input id="carga-uv" type="number" min="1" step="1" class="form-control" @bind="_formulario.Carga.UsuariosVirtuales" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Duración (s)" For="carga-dur">
+                            <input id="carga-dur" type="number" min="1" step="1" class="form-control" @bind="_formulario.Carga.DuracionSegundos" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Warm-up (s)" For="carga-warm">
+                            <input id="carga-warm" type="number" min="0" step="1" class="form-control" @bind="_formulario.Carga.WarmUpSegundos" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Ramp-up (s)" For="carga-ramp">
+                            <input id="carga-ramp" type="number" min="0" step="1" class="form-control" @bind="_formulario.Carga.RampUpSegundos" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Intervalo entre solicitudes (ms)" For="carga-int">
+                            <input id="carga-int" type="number" min="0" step="1" class="form-control" @bind="_formulario.Carga.IntervaloSolicitudesMs" @bind:event="oninput" />
+                        </FormField>
+                    </div>
+                </section>
+            }
+
+            @if (_formulario.MuestraEstres)
+            {
+                <section class="subpanel" aria-labelledby="estres-titulo">
+                    <h3 id="estres-titulo" class="subpanel__title">Parámetros · Estrés</h3>
+                    <div class="form-grid form-grid--2">
+                        <FormField Label="Usuarios iniciales" For="estres-ini">
+                            <input id="estres-ini" type="number" min="1" step="1" class="form-control" @bind="_formulario.Estres.UsuariosIniciales" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Incremento de usuarios" For="estres-inc">
+                            <input id="estres-inc" type="number" min="1" step="1" class="form-control" @bind="_formulario.Estres.IncrementoUsuarios" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Usuarios máximos" For="estres-max">
+                            <input id="estres-max" type="number" min="1" step="1" class="form-control" @bind="_formulario.Estres.UsuariosMaximos" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Duración por nivel (s)" For="estres-dur">
+                            <input id="estres-dur" type="number" min="1" step="1" class="form-control" @bind="_formulario.Estres.DuracionNivelSegundos" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Warm-up (s)" For="estres-warm">
+                            <input id="estres-warm" type="number" min="0" step="1" class="form-control" @bind="_formulario.Estres.WarmUpSegundos" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Intervalo entre solicitudes (ms)" For="estres-int">
+                            <input id="estres-int" type="number" min="0" step="1" class="form-control" @bind="_formulario.Estres.IntervaloSolicitudesMs" @bind:event="oninput" />
+                        </FormField>
+                    </div>
+                </section>
+            }
+
+            @if (_formulario.MuestraConcurrencia)
+            {
+                <section class="subpanel" aria-labelledby="concurrencia-titulo">
+                    <h3 id="concurrencia-titulo" class="subpanel__title">Parámetros · Concurrencia</h3>
+                    <div class="form-grid form-grid--2">
+                        <FormField Label="Usuarios concurrentes" For="conc-uc">
+                            <input id="conc-uc" type="number" min="1" step="1" class="form-control" @bind="_formulario.Concurrencia.UsuariosConcurrentes" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Rondas" For="conc-rondas">
+                            <input id="conc-rondas" type="number" min="1" step="1" class="form-control" @bind="_formulario.Concurrencia.Rondas" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Warm-up (s)" For="conc-warm">
+                            <input id="conc-warm" type="number" min="0" step="1" class="form-control" @bind="_formulario.Concurrencia.WarmUpSegundos" @bind:event="oninput" />
+                        </FormField>
+                        <FormField Label="Intervalo entre rondas (ms)" For="conc-int">
+                            <input id="conc-int" type="number" min="0" step="1" class="form-control" @bind="_formulario.Concurrencia.IntervaloRondasMs" @bind:event="oninput" />
+                        </FormField>
+                    </div>
+                </section>
+            }
+        </div>
+    }
+
+    <section class="config-section" aria-labelledby="metricas-titulo">
+        <h3 id="metricas-titulo" class="config-section__title">Métricas a recopilar</h3>
+        <CheckboxGroup Label="Métricas a recopilar"
+                       Options="Metricas" Selected="_formulario.MetricaIds"
+                       OnToggle="_formulario.AlternarMetrica" Disabled="@Deshabilitado" />
+    </section>
+
+    <section class="config-section" aria-labelledby="observaciones-titulo">
+        <h3 id="observaciones-titulo" class="config-section__title">Observaciones</h3>
+        <FormField Label="Observaciones (opcional)" For="observaciones">
+            <textarea id="observaciones" class="form-control config-textarea" rows="3"
+                      @bind="_formulario.Observaciones" @bind:event="oninput" disabled="@Deshabilitado"></textarea>
+        </FormField>
+    </section>
 
     <div class="config-actions">
         <button type="button" class="btn btn-primary" @onclick="_formulario.GuardarAsync" disabled="@(!_formulario.PuedeGuardar)">Guardar</button>
@@ -110,6 +171,8 @@
 
 @code {
     private ConfiguracionFormulario _formulario = default!;
+
+    private bool Deshabilitado => !_formulario.HayProyectos;
 
     protected override Task OnInitializedAsync()
     {
