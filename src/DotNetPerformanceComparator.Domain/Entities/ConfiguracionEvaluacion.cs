@@ -1,10 +1,15 @@
 namespace DotNetPerformanceComparator.Domain.Entities;
 
+/// <summary>
+/// Una configuración de evaluación corresponde exactamente a un <see cref="TipoPrueba"/>.
+/// Para otro tipo de prueba se crea otra configuración.
+/// </summary>
 public class ConfiguracionEvaluacion
 {
     public int Id { get; set; }
     public int ProyectoId { get; set; }
     public int MigracionId { get; set; }
+    public int TipoPruebaId { get; set; }
     public string Nombre { get; set; } = string.Empty;
     public int NumeroEjecuciones { get; set; }
 
@@ -19,7 +24,8 @@ public class ConfiguracionEvaluacion
 
     public ProyectoDotNet Proyecto { get; set; } = null!;
     public Migracion Migracion { get; set; } = null!;
-    public ICollection<ConfiguracionPrueba> ConfiguracionesPrueba { get; set; } = new List<ConfiguracionPrueba>();
+    public TipoPrueba TipoPrueba { get; set; } = null!;
     public ICollection<ConfiguracionMetrica> ConfiguracionesMetrica { get; set; } = new List<ConfiguracionMetrica>();
+    public ICollection<ParametroEvaluacion> Parametros { get; set; } = new List<ParametroEvaluacion>();
     public ICollection<Ejecucion> Ejecuciones { get; set; } = new List<Ejecucion>();
 }

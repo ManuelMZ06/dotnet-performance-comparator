@@ -65,64 +65,73 @@ public class ConfiguracionFormularioTests
     }
 
     [Fact]
-    public async Task SeleccionarCarga_MuestraSusParametros()
+    public async Task InicialmenteNoHayTipoSeleccionado()
     {
         var (f, _) = await CrearAsync();
+        Assert.Null(f.TipoPruebaId);
         Assert.False(f.MuestraCarga);
-
-        f.AlternarTipoPrueba(Carga);
-
-        Assert.True(f.MuestraCarga);
         Assert.False(f.MuestraEstres);
         Assert.False(f.MuestraConcurrencia);
     }
 
     [Fact]
-    public async Task SeleccionarCadaTipo_UsaSuModeloIndependiente()
+    public async Task SeleccionUnica_UnTipoReemplazaAlAnterior()
     {
         var (f, _) = await CrearAsync();
-        f.AlternarTipoPrueba(Estres);
+
+        f.TipoPruebaId = Carga;
+        Assert.True(f.MuestraCarga);
+        Assert.False(f.MuestraEstres);
+
+        f.TipoPruebaId = Estres;
+        Assert.False(f.MuestraCarga);
         Assert.True(f.MuestraEstres);
-        f.AlternarTipoPrueba(Concurrencia);
+
+        f.TipoPruebaId = Concurrencia;
+        Assert.False(f.MuestraEstres);
         Assert.True(f.MuestraConcurrencia);
-
-        f.Estres.UsuariosIniciales = "10";
-        f.Concurrencia.Rondas = "5";
-
-        Assert.Equal("10", f.Estres.UsuariosIniciales);
-        Assert.Equal("5", f.Concurrencia.Rondas);
     }
 
     [Fact]
-    public async Task DesmarcarCarga_NoPersisteSusParametros()
+    public async Task SoloUnPanelActivoALaVez()
     {
-        var (f, s) = await CrearAsync();
-        CompletarGenerales(f);
-        f.AlternarTipoPrueba(Carga);
-        LlenarCarga(f);
-        f.AlternarTipoPrueba(Carga); // se desmarca
-
-        await f.GuardarAsync();
-
-        Assert.Null(s.UltimoRequest!.Carga);
-        Assert.Empty(s.UltimoRequest.TipoPruebaIds);
+        var (f, _) = await CrearAsync();
+        f.TipoPruebaId = Estres;
+        var activos = new[] { f.MuestraCarga, f.MuestraEstres, f.MuestraConcurrencia }.Count(x => x);
+        Assert.Equal(1, activos);
     }
 
     [Fact]
-    public async Task Guardar_EnviaSoloParametrosDeTiposSeleccionados()
+    public async Task CambiarTipoPrueba_MarcaDirty()
+    {
+        var (f, _) = await CrearAsync();
+        CompletarGenerales(f);
+        f.TipoPruebaId = Carga;
+        LlenarCarga(f);
+        await f.GuardarAsync();
+        Assert.True(f.EstaGuardado);
+
+        f.TipoPruebaId = Estres;
+
+        Assert.False(f.EstaGuardado);
+    }
+
+    [Fact]
+    public async Task Guardar_EnviaElTipoUnicoYSoloSuBloqueDeParametros()
     {
         var (f, s) = await CrearAsync();
         CompletarGenerales(f);
-        f.AlternarTipoPrueba(Carga);
+        f.TipoPruebaId = Carga;
         LlenarCarga(f);
-        f.Estres.UsuariosIniciales = "99"; // Estrés NO seleccionado
+        f.Estres.UsuariosIniciales = "99"; // otro tipo, no seleccionado
 
         await f.GuardarAsync();
 
-        Assert.NotNull(s.UltimoRequest!.Carga);
+        Assert.Equal(Carga, s.UltimoRequest!.TipoPruebaId);
+        Assert.NotNull(s.UltimoRequest.Carga);
         Assert.Null(s.UltimoRequest.Estres);
+        Assert.Null(s.UltimoRequest.Concurrencia);
         Assert.Equal("50", s.UltimoRequest.Carga!.UsuariosVirtuales);
-        Assert.Equal(new[] { Carga }, s.UltimoRequest.TipoPruebaIds);
     }
 
     [Fact]
@@ -130,7 +139,7 @@ public class ConfiguracionFormularioTests
     {
         var (f, s) = await CrearAsync();
         CompletarGenerales(f);
-        f.AlternarTipoPrueba(Carga);
+        f.TipoPruebaId = Carga;
         LlenarCarga(f);
         f.NumeroEjecuciones = 2;
 
@@ -155,7 +164,7 @@ public class ConfiguracionFormularioTests
     {
         var (f, _) = await CrearAsync();
         CompletarGenerales(f);
-        f.AlternarTipoPrueba(Carga);
+        f.TipoPruebaId = Carga;
         LlenarCarga(f);
 
         await f.GuardarAsync();
@@ -170,7 +179,7 @@ public class ConfiguracionFormularioTests
     {
         var (f, s) = await CrearAsync();
         CompletarGenerales(f);
-        f.AlternarTipoPrueba(Carga);
+        f.TipoPruebaId = Carga;
         LlenarCarga(f);
 
         await f.GuardarAsync();
@@ -184,10 +193,9 @@ public class ConfiguracionFormularioTests
     {
         var (f, _) = await CrearAsync();
         CompletarGenerales(f);
-        f.AlternarTipoPrueba(Carga);
+        f.TipoPruebaId = Carga;
         LlenarCarga(f);
         await f.GuardarAsync();
-        Assert.True(f.EstaGuardado);
 
         f.RutaObjetivo = "/otro";
 
@@ -200,25 +208,11 @@ public class ConfiguracionFormularioTests
     {
         var (f, _) = await CrearAsync();
         CompletarGenerales(f);
-        f.AlternarTipoPrueba(Carga);
+        f.TipoPruebaId = Carga;
         LlenarCarga(f);
         await f.GuardarAsync();
 
         f.Observaciones = "nueva nota";
-
-        Assert.False(f.EstaGuardado);
-    }
-
-    [Fact]
-    public async Task ModificarParametroDeCargaDespuesDeGuardar_VuelveAHabilitar()
-    {
-        var (f, _) = await CrearAsync();
-        CompletarGenerales(f);
-        f.AlternarTipoPrueba(Carga);
-        LlenarCarga(f);
-        await f.GuardarAsync();
-
-        f.Carga.UsuariosVirtuales = "80";
 
         Assert.False(f.EstaGuardado);
     }

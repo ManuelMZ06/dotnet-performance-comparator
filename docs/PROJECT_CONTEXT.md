@@ -225,14 +225,15 @@ Web → Infrastructure únicamente como composition root / DI.
 
 ## 8. Modelo de datos
 
-### Entidades persistentes previstas
+> Estado vigente tras C-06.2. La entidad `ConfiguracionPrueba` del diseño original se eliminó (ver D-34): una `ConfiguracionEvaluacion` corresponde a un único `TipoPrueba`.
+
+### Entidades persistentes
 
 ```
 ProyectoDotNet
 Migracion
 TipoPrueba
 ConfiguracionEvaluacion
-ConfiguracionPrueba
 ParametroEvaluacion
 Metrica
 ConfiguracionMetrica
@@ -248,13 +249,14 @@ ProyectoDotNet 1 → N Migracion
 
 ProyectoDotNet 1 → N ConfiguracionEvaluacion
 
-ConfiguracionEvaluacion N ↔ N TipoPrueba
-mediante ConfiguracionPrueba
+Migracion 1 → N ConfiguracionEvaluacion            (una migración .NET 10 exitosa concreta; ver D-27)
+
+TipoPrueba 1 → N ConfiguracionEvaluacion            (un único tipo por configuración; ver D-34)
 
 ConfiguracionEvaluacion N ↔ N Metrica
 mediante ConfiguracionMetrica
 
-ConfiguracionEvaluacion 1 → N ParametroEvaluacion
+ConfiguracionEvaluacion 1 → N ParametroEvaluacion   (parámetros del tipo configurado; ver D-31)
 
 ConfiguracionEvaluacion 1 → N Ejecucion
 
@@ -264,6 +266,8 @@ Ejecucion 1 → N ResultadoMetrica
 
 Metrica 1 → N ResultadoMetrica
 ```
+
+Campos añadidos durante Construcción a `ConfiguracionEvaluacion`: `Nombre`, `MigracionId` (D-27), `TipoPruebaId` (D-34), `RutaObjetivo` y `Observaciones` (D-33, D-31), con `NumeroEjecuciones` restringido a 1..3 (D-30).
 
 `Comparacion` y `Reporte` se consideran inicialmente objetos transitorios/generados bajo demanda y **no** entidades persistentes, salvo que una decisión posterior cambie explícitamente esto.
 
@@ -380,7 +384,8 @@ Decisiones tomadas durante el desarrollo hasta la fecha:
 | D-27 | **`ConfiguracionEvaluacion` evoluciona (CU-03):** se agregan de forma permanente `Nombre` (requerido, sin unicidad —dos evaluaciones pueden llamarse igual— ni longitud máxima) y `MigracionId` (FK **requerida** a `Migracion`, con `DeleteBehavior.Restrict`). Cada configuración queda asociada explícitamente a un `ProyectoDotNet` **y** a una `Migracion` concreta **Exitosa** que le pertenece; no se usa "la última migración" (una aplicación puede tener varias migraciones y la configuración debe ser reproducible). Application valida la pertenencia proyecto↔migración y el estado Exitosa, sin confiar en los Ids enviados por Web. Migración EF `AddEvaluationNameAndMigrationReference` (2.ª migración, aditiva; la tabla estaba vacía, así que no requirió backfill). Estado inicial `EstadosConfiguracionEvaluacion.Configurada`; los estados de ejecución se definirán en CU-04. | Trazabilidad experimental exacta entre la aplicación .NET 8, su migración .NET 10 y la evaluación. |
 | D-28 | **Parámetros específicos (CU-03):** Warm-up, Usuarios virtuales, Duración, Ramp-up, Intervalo y Observaciones se persisten como filas `ParametroEvaluacion` (clave/valor), no como columnas nuevas. Las claves son constantes internas estables en Domain (`ClavesParametroEvaluacion`), distintas del texto de UI (sin espacios ni acentos). Solo se crea fila para los parámetros con valor; los numéricos se validan en Application (Warm-up/Ramp-up ≥ 0; Usuarios/Duración/Intervalo > 0; enteros) y Observaciones es texto libre opcional (se recorta el espacio exterior). `NumeroEjecuciones > 0` se valida en Application (regla aplazada desde el modelo de datos). No se definen valores máximos ni por defecto. | Esquema estable y flexible; Application es la autoridad de validación. La forma en que cada parámetro se usará es parte de CU-04. |
 | D-29 | **Guardado como agregado (CU-03):** `IConfiguracionEvaluacionRepository.AddAsync` guarda `ConfiguracionEvaluacion` con sus `ConfiguracionPrueba`, `ConfiguracionMetrica` y `ParametroEvaluacion` en un único `SaveChanges` (contexto de vida corta vía `IDbContextFactory`). Una configuración incompleta no queda parcialmente persistida. El catálogo (proyectos, migraciones exitosas, tipos y métricas) se consulta con `IEvaluationCatalogRepository` (solo lectura, `AsNoTracking`, ordenado por Id para conservar el orden del catálogo). | Integridad del agregado; Web nunca accede a `AppDbContext`. |
-| D-30 | **Número de ejecuciones 1..3 (C-06.1):** `NumeroEjecuciones` solo admite 1, 2 o 3 (derivado del alcance de la investigación), validado en Application y reforzado con un `CHECK` en la base (`CK_ConfiguracionEvaluacion_NumeroEjecuciones`). **Significado:** número de repeticiones de **cada** tipo de prueba seleccionado para **cada** versión evaluada (.NET 8 y .NET 10). Ej.: tipos Carga+Estrés con 3 ejecuciones → CU-04 ejecutará Carga ×3 en .NET 8 y ×3 en .NET 10, e igual para Estrés. | Alcance experimental acotado y reproducible; fuente de verdad para CU-04. |
-| D-31 | **Parámetros por tipo de prueba (C-06.1):** cada parámetro técnico pertenece a una `ConfiguracionPrueba` concreta mediante la clave compuesta `(ConfiguracionId, TipoPruebaId)` (FK a `ConfiguracionPrueba`, `Restrict`). Reemplaza la relación anterior `ConfiguracionEvaluacion`→`ParametroEvaluacion` (parámetros compartidos, ambigua). Los tres tipos usan modelos de entrada **tipados** en Application (`ParametrosCargaInput`/`EstresInput`/`ConcurrenciaInput`), no listas clave/valor arbitrarias; Web no puede inventar claves. Solo se persisten los parámetros de los tipos seleccionados; un tipo seleccionado requiere todos sus parámetros válidos. `Observaciones` pasa a `ConfiguracionEvaluacion.Observaciones` (nullable); ya no es un parámetro. Claves en `ClavesParametroCarga`/`Estres`/`Concurrencia`. | La base representa inequívocamente a qué prueba pertenece cada parámetro. |
+| D-30 | **Número de ejecuciones 1..3 (C-06.1; significado actualizado en C-06.2):** `NumeroEjecuciones` solo admite 1, 2 o 3 (derivado del alcance de la investigación), validado en Application y reforzado con un `CHECK` en la base (`CK_ConfiguracionEvaluacion_NumeroEjecuciones`). **Significado:** número de repeticiones del **único** tipo de prueba configurado para **cada** versión evaluada (.NET 8 y .NET 10). Ej.: Carga con 3 ejecuciones → CU-04 ejecutará Carga ×3 en .NET 8 y ×3 en .NET 10. | Alcance experimental acotado y reproducible; fuente de verdad para CU-04. |
+| D-31 | **Parámetros tipados por tipo de prueba (C-06.1; relación simplificada en C-06.2):** los tres tipos usan modelos de entrada **tipados** en Application (`ParametrosCargaInput`/`EstresInput`/`ConcurrenciaInput`), no listas clave/valor arbitrarias; Web no puede inventar claves. Se valida y persiste **solo** el bloque del tipo configurado, con todos sus parámetros; incluir bloques de otros tipos se rechaza por inconsistencia. `ParametroEvaluacion` pertenece a `ConfiguracionEvaluacion` por `ConfiguracionId` (sin `TipoPruebaId`); el tipo se deduce del padre (ver D-34, que sustituyó la FK compuesta a `ConfiguracionPrueba` de C-06.1). `Observaciones` es `ConfiguracionEvaluacion.Observaciones` (nullable); no es un parámetro. Claves en `ClavesParametroCarga`/`Estres`/`Concurrencia`. | Entrada tipada y segura; el tipo de cada parámetro queda determinado por la configuración. |
 | D-32 | **Semántica de los tipos de prueba (C-06.1; fuente de verdad para CU-04; aún no ejecutada).** **Carga** — carga sostenida: warm-up → ramp-up progresivo hasta `UsuariosVirtuales`, mantenido durante `DuracionSegundos`; parámetros `UsuariosVirtuales`(>0), `DuracionSegundos`(>0), `WarmUpSegundos`(≥0), `RampUpSegundos`(≥0), `IntervaloSolicitudesMs`(≥0, pausa entre solicitudes de un usuario virtual). **Estrés** — presión creciente: desde `UsuariosIniciales` sumando `IncrementoUsuarios` por nivel (cada nivel dura `DuracionNivelSegundos`) hasta `UsuariosMaximos`; parámetros `UsuariosIniciales`(>0), `IncrementoUsuarios`(>0), `UsuariosMaximos`(>Iniciales), `DuracionNivelSegundos`(>0), `WarmUpSegundos`(≥0), `IntervaloSolicitudesMs`(≥0). La diferencia máximo−inicial no tiene que ser divisible por el incremento; CU-04 podrá limitar el último nivel al máximo. **Concurrencia** — ráfagas simultáneas (distinta de carga sostenida): `UsuariosConcurrentes` solicitudes a la vez por ronda, `Rondas` rondas separadas por `IntervaloRondasMs`; parámetros `UsuariosConcurrentes`(>0), `Rondas`(>0), `WarmUpSegundos`(≥0), `IntervaloRondasMs`(≥0); **sin Ramp-up**. | CU-04 dependerá de estas definiciones; quedan fijadas antes de ejecutar. |
 | D-33 | **Objetivo HTTP (C-06.1):** cada evaluación define `ConfiguracionEvaluacion.RutaObjetivo`, una ruta **relativa** (requerida, comienza con `/`, no es URL absoluta ni contiene esquema `http(s)://`). CU-04 construirá `http://127.0.0.1:<puerto-asignado>` + `RutaObjetivo` para cada versión, de modo que .NET 8 y .NET 10 reciban la misma solicitud lógica. **Primera versión: únicamente método `GET`** (sin POST/PUT/PATCH/DELETE, cuerpos, autenticación, headers, cookies ni escenarios multi-request), por lo que no se agrega columna `MetodoHttp`; M-04 muestra "Método HTTP: GET" como dato de solo lectura. La comprobación de que el endpoint responde corresponde a CU-04. | Comparación idéntica entre versiones y alcance HTTP acotado para la primera versión. |
+| D-34 | **Una evaluación = un único tipo de prueba (C-06.2):** `ConfiguracionEvaluacion` corresponde exactamente a un `TipoPrueba` (`TipoPruebaId` requerido, FK a `TipoPrueba` con `Restrict`, `TipoPrueba 1 — 0..* ConfiguracionEvaluacion`). Para ejecutar otro tipo, el Usuario crea otra configuración (mismo proyecto, migración y endpoint si quiere). Se **eliminó la entidad/tabla `ConfiguracionPrueba`** (la unión N↔N de C-06.1 ya no aplica) y `ParametroEvaluacion` volvió a `(Id, ConfiguracionId, Clave, Valor)` con FK directa a la configuración (`Restrict`). M-04 usa selección única de tipo. Migración EF `SimplifyEvaluationToSingleTestType` (4.ª). Las métricas siguen siendo múltiples por evaluación. | Regla funcional definitiva previa a CU-04; el modelo refleja 1 configuración = 1 tipo sin ambigüedad. |

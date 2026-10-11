@@ -52,7 +52,7 @@
     </div>
 
     <p id="ruta-objetivo-ayuda" class="form-help form-row">Ruta relativa de la aplicación (comienza con «/»); CU-04 la solicitará con GET en cada versión.</p>
-    <p id="ejecuciones-ayuda" class="form-help">Se realizarán entre @ConfiguracionFormulario.MinEjecuciones y @ConfiguracionFormulario.MaxEjecuciones repeticiones por tipo de prueba y por versión.</p>
+    <p id="ejecuciones-ayuda" class="form-help">Número de repeticiones que se realizarán para el tipo de prueba seleccionado en cada versión (.NET 8 y .NET 10), entre @ConfiguracionFormulario.MinEjecuciones y @ConfiguracionFormulario.MaxEjecuciones.</p>
 
     @if (_formulario.ProyectoSinMigraciones)
     {
@@ -64,10 +64,11 @@
     }
 
     <section class="config-section" aria-labelledby="tipos-titulo">
-        <h3 id="tipos-titulo" class="config-section__title">Tipo de pruebas</h3>
-        <OptionToggleGroup Label="Tipo de pruebas"
-                           Options="Tipos" Selected="_formulario.TipoPruebaIds"
-                           OnToggle="_formulario.AlternarTipoPrueba" Disabled="@Deshabilitado" />
+        <h3 id="tipos-titulo" class="config-section__title">Tipo de prueba</h3>
+        <p class="form-help form-help--inline">Seleccione un único tipo de prueba para esta configuración.</p>
+        <SingleOptionToggleGroup Label="Tipo de prueba"
+                                 Options="Tipos" Value="_formulario.TipoPruebaId"
+                                 ValueChanged="OnTipoPruebaChanged" Disabled="@Deshabilitado" />
     </section>
 
     @if (_formulario.MuestraCarga || _formulario.MuestraEstres || _formulario.MuestraConcurrencia)
@@ -180,8 +181,10 @@
         return _formulario.CargarAsync();
     }
 
-    private IReadOnlyList<OptionToggleGroup.ToggleOption> Tipos =>
-        _formulario.Datos.TiposPrueba.Select(t => new OptionToggleGroup.ToggleOption(t.Id, t.Nombre)).ToList();
+    private IReadOnlyList<SingleOptionToggleGroup.Option> Tipos =>
+        _formulario.Datos.TiposPrueba.Select(t => new SingleOptionToggleGroup.Option(t.Id, t.Nombre)).ToList();
+
+    private void OnTipoPruebaChanged(int? tipoId) => _formulario.TipoPruebaId = tipoId;
 
     private IReadOnlyList<CheckboxGroup.CheckOption> Metricas =>
         _formulario.Datos.Metricas.Select(m => new CheckboxGroup.CheckOption(m.Id, m.Nombre)).ToList();

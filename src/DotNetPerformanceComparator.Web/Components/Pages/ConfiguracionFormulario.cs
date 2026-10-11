@@ -17,6 +17,7 @@ public sealed class ConfiguracionFormulario
     private string? _nombre;
     private int? _proyectoId;
     private int? _migracionId;
+    private int? _tipoPruebaId;
     private int? _numeroEjecuciones;
     private string? _rutaObjetivo;
     private string? _observaciones;
@@ -36,7 +37,6 @@ public sealed class ConfiguracionFormulario
 
     public EvaluacionConfigurationData Datos { get; private set; } = new([], [], [], []);
 
-    public HashSet<int> TipoPruebaIds { get; } = [];
     public HashSet<int> MetricaIds { get; } = [];
 
     public ParametrosCargaForm Carga { get; }
@@ -50,6 +50,7 @@ public sealed class ConfiguracionFormulario
     public OperationMessageKind MensajeTipo { get; private set; }
 
     public string? Nombre { get => _nombre; set => Asignar(ref _nombre, value); }
+    public int? TipoPruebaId { get => _tipoPruebaId; set => Asignar(ref _tipoPruebaId, value); }
     public int? NumeroEjecuciones { get => _numeroEjecuciones; set => Asignar(ref _numeroEjecuciones, value); }
     public string? RutaObjetivo { get => _rutaObjetivo; set => Asignar(ref _rutaObjetivo, value); }
     public string? Observaciones { get => _observaciones; set => Asignar(ref _observaciones, value); }
@@ -80,9 +81,9 @@ public sealed class ConfiguracionFormulario
     public int? EstresId => IdTipo(TiposPruebaConocidos.Estres);
     public int? ConcurrenciaId => IdTipo(TiposPruebaConocidos.Concurrencia);
 
-    public bool MuestraCarga => CargaId is { } id && TipoPruebaIds.Contains(id);
-    public bool MuestraEstres => EstresId is { } id && TipoPruebaIds.Contains(id);
-    public bool MuestraConcurrencia => ConcurrenciaId is { } id && TipoPruebaIds.Contains(id);
+    public bool MuestraCarga => _tipoPruebaId is { } id && id == CargaId;
+    public bool MuestraEstres => _tipoPruebaId is { } id && id == EstresId;
+    public bool MuestraConcurrencia => _tipoPruebaId is { } id && id == ConcurrenciaId;
 
     public async Task CargarAsync()
     {
@@ -101,8 +102,6 @@ public sealed class ConfiguracionFormulario
         }
     }
 
-    public void AlternarTipoPrueba(int id) => Alternar(TipoPruebaIds, id);
-
     public void AlternarMetrica(int id) => Alternar(MetricaIds, id);
 
     public async Task GuardarAsync()
@@ -117,8 +116,8 @@ public sealed class ConfiguracionFormulario
         try
         {
             var request = new ConfigurarEvaluacionRequest(
-                _nombre, _proyectoId, _migracionId, _numeroEjecuciones, _rutaObjetivo, _observaciones,
-                TipoPruebaIds.ToList(), MetricaIds.ToList(),
+                _nombre, _proyectoId, _migracionId, _tipoPruebaId, _numeroEjecuciones, _rutaObjetivo, _observaciones,
+                MetricaIds.ToList(),
                 MuestraCarga ? Carga.ToInput() : null,
                 MuestraEstres ? Estres.ToInput() : null,
                 MuestraConcurrencia ? Concurrencia.ToInput() : null);

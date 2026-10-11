@@ -74,11 +74,16 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("TipoPruebaId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MigracionId");
 
                     b.HasIndex("ProyectoId");
+
+                    b.HasIndex("TipoPruebaId");
 
                     b.ToTable("ConfiguracionEvaluacion", null, t =>
                         {
@@ -99,21 +104,6 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.HasIndex("MetricaId");
 
                     b.ToTable("ConfiguracionMetrica", (string)null);
-                });
-
-            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ConfiguracionPrueba", b =>
-                {
-                    b.Property<int>("ConfiguracionId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TipoPruebaId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("ConfiguracionId", "TipoPruebaId");
-
-                    b.HasIndex("TipoPruebaId");
-
-                    b.ToTable("ConfiguracionPrueba", (string)null);
                 });
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.Ejecucion", b =>
@@ -271,16 +261,13 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.Property<int>("ConfiguracionId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("TipoPruebaId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("Valor")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConfiguracionId", "TipoPruebaId");
+                    b.HasIndex("ConfiguracionId");
 
                     b.ToTable("ParametroEvaluacion", (string)null);
                 });
@@ -405,9 +392,17 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.TipoPrueba", "TipoPrueba")
+                        .WithMany("ConfiguracionesEvaluacion")
+                        .HasForeignKey("TipoPruebaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Migracion");
 
                     b.Navigation("Proyecto");
+
+                    b.Navigation("TipoPrueba");
                 });
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ConfiguracionMetrica", b =>
@@ -427,25 +422,6 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.Navigation("Configuracion");
 
                     b.Navigation("Metrica");
-                });
-
-            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ConfiguracionPrueba", b =>
-                {
-                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.ConfiguracionEvaluacion", "Configuracion")
-                        .WithMany("ConfiguracionesPrueba")
-                        .HasForeignKey("ConfiguracionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.TipoPrueba", "TipoPrueba")
-                        .WithMany("ConfiguracionesPrueba")
-                        .HasForeignKey("TipoPruebaId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Configuracion");
-
-                    b.Navigation("TipoPrueba");
                 });
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.Ejecucion", b =>
@@ -472,13 +448,13 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ParametroEvaluacion", b =>
                 {
-                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.ConfiguracionPrueba", "ConfiguracionPrueba")
+                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.ConfiguracionEvaluacion", "Configuracion")
                         .WithMany("Parametros")
-                        .HasForeignKey("ConfiguracionId", "TipoPruebaId")
+                        .HasForeignKey("ConfiguracionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("ConfiguracionPrueba");
+                    b.Navigation("Configuracion");
                 });
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ResultadoMetrica", b =>
@@ -504,13 +480,8 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("ConfiguracionesMetrica");
 
-                    b.Navigation("ConfiguracionesPrueba");
-
                     b.Navigation("Ejecuciones");
-                });
 
-            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ConfiguracionPrueba", b =>
-                {
                     b.Navigation("Parametros");
                 });
 
@@ -542,7 +513,7 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.TipoPrueba", b =>
                 {
-                    b.Navigation("ConfiguracionesPrueba");
+                    b.Navigation("ConfiguracionesEvaluacion");
                 });
 #pragma warning restore 612, 618
         }

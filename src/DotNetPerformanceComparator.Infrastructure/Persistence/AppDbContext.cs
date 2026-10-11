@@ -14,7 +14,6 @@ public class AppDbContext : DbContext
     public DbSet<Migracion> Migraciones => Set<Migracion>();
     public DbSet<TipoPrueba> TiposPrueba => Set<TipoPrueba>();
     public DbSet<ConfiguracionEvaluacion> ConfiguracionesEvaluacion => Set<ConfiguracionEvaluacion>();
-    public DbSet<ConfiguracionPrueba> ConfiguracionesPrueba => Set<ConfiguracionPrueba>();
     public DbSet<ParametroEvaluacion> ParametrosEvaluacion => Set<ParametroEvaluacion>();
     public DbSet<Metrica> Metricas => Set<Metrica>();
     public DbSet<ConfiguracionMetrica> ConfiguracionesMetrica => Set<ConfiguracionMetrica>();

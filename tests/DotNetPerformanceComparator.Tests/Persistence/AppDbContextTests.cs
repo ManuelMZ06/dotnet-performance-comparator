@@ -38,6 +38,7 @@ public class AppDbContextTests : IDisposable
             Nombre = "Evaluación",
             NumeroEjecuciones = 1,
             RutaObjetivo = "/",
+            TipoPruebaId = 1,
             FechaCreacion = DateTime.UtcNow,
             Estado = "Configurada"
         };
@@ -61,7 +62,8 @@ public class AppDbContextTests : IDisposable
 
         var entidades = context.Model.GetEntityTypes().Select(e => e.ClrType.Name).ToList();
 
-        Assert.Equal(11, entidades.Count);
+        Assert.Equal(10, entidades.Count);
+        Assert.DoesNotContain("ConfiguracionPrueba", entidades);
         Assert.DoesNotContain("Comparacion", entidades);
         Assert.DoesNotContain("Reporte", entidades);
     }
@@ -105,13 +107,10 @@ public class AppDbContextTests : IDisposable
                 RutaObjetivo = "/api/productos",
                 Observaciones = "Condiciones equivalentes",
                 FechaCreacion = DateTime.UtcNow,
-                Estado = "Configurada"
+                Estado = "Configurada",
+                TipoPruebaId = 1
             };
-            configuracion.ConfiguracionesPrueba.Add(new ConfiguracionPrueba
-            {
-                TipoPruebaId = 1,
-                Parametros = { new ParametroEvaluacion { TipoPruebaId = 1, Clave = "UsuariosVirtuales", Valor = "50" } }
-            });
+            configuracion.Parametros.Add(new ParametroEvaluacion { Clave = "UsuariosVirtuales", Valor = "50" });
             configuracion.ConfiguracionesMetrica.Add(new ConfiguracionMetrica { MetricaId = 3 });
 
             var ejecucion = new Ejecucion
@@ -132,8 +131,8 @@ public class AppDbContextTests : IDisposable
         using var verificacion = _database.CreateContext();
         var cargado = verificacion.ProyectosDotNet
             .Include(p => p.Migraciones)
-            .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.ConfiguracionesPrueba).ThenInclude(cp => cp.TipoPrueba)
-            .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.ConfiguracionesPrueba).ThenInclude(cp => cp.Parametros)
+            .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.TipoPrueba)
+            .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.Parametros)
             .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.ConfiguracionesMetrica).ThenInclude(cm => cm.Metrica)
             .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.Ejecuciones).ThenInclude(e => e.Condiciones)
             .Include(p => p.ConfiguracionesEvaluacion).ThenInclude(c => c.Ejecuciones).ThenInclude(e => e.Resultados).ThenInclude(r => r.Metrica)
@@ -142,9 +141,8 @@ public class AppDbContextTests : IDisposable
 
         Assert.Single(cargado.Migraciones);
         var config = Assert.Single(cargado.ConfiguracionesEvaluacion);
-        var prueba = Assert.Single(config.ConfiguracionesPrueba);
-        Assert.Equal("Carga", prueba.TipoPrueba.Nombre);
-        Assert.Equal("UsuariosVirtuales", Assert.Single(prueba.Parametros).Clave);
+        Assert.Equal("Carga", config.TipoPrueba.Nombre);
+        Assert.Equal("UsuariosVirtuales", Assert.Single(config.Parametros).Clave);
         Assert.Equal("Tiempo de respuesta", Assert.Single(config.ConfiguracionesMetrica).Metrica.Nombre);
         Assert.Equal("/api/productos", config.RutaObjetivo);
         var ejecucionCargada = Assert.Single(config.Ejecuciones);
@@ -187,7 +185,6 @@ public class AppDbContextTests : IDisposable
     }
 
     [Theory]
-    [InlineData(typeof(ConfiguracionPrueba), "ConfiguracionId", "TipoPruebaId")]
     [InlineData(typeof(ConfiguracionMetrica), "ConfiguracionId", "MetricaId")]
     public void TablasDeUnion_UsanClaveCompuesta(Type entidad, string primera, string segunda)
     {
@@ -199,31 +196,24 @@ public class AppDbContextTests : IDisposable
     }
 
     [Fact]
-    public void ConfiguracionPrueba_DuplicadaEsRechazada()
+    public void ConfiguracionEvaluacion_SinTipoPruebaValido_EsRechazada()
     {
-        using (var context = _database.CreateContext())
+        using var context = _database.CreateContext();
+        var proyecto = NuevoProyecto();
+        var configuracion = new ConfiguracionEvaluacion
         {
-            var proyecto = NuevoProyecto();
-            var configuracion = new ConfiguracionEvaluacion
-            {
-                Proyecto = proyecto,
-                Migracion = NuevaMigracion(proyecto),
-                Nombre = "Evaluación",
-                NumeroEjecuciones = 1,
-                RutaObjetivo = "/",
-                FechaCreacion = DateTime.UtcNow,
-                Estado = "Configurada"
-            };
-            configuracion.ConfiguracionesPrueba.Add(new ConfiguracionPrueba { TipoPruebaId = 1 });
-            context.ConfiguracionesEvaluacion.Add(configuracion);
-            context.SaveChanges();
-        }
+            Proyecto = proyecto,
+            Migracion = NuevaMigracion(proyecto),
+            Nombre = "Evaluación",
+            NumeroEjecuciones = 1,
+            RutaObjetivo = "/",
+            TipoPruebaId = 999, // no existe en el catálogo
+            FechaCreacion = DateTime.UtcNow,
+            Estado = "Configurada"
+        };
+        context.ConfiguracionesEvaluacion.Add(configuracion);
 
-        using var otro = _database.CreateContext();
-        var id = otro.ConfiguracionesEvaluacion.Select(c => c.Id).Single();
-        otro.ConfiguracionesPrueba.Add(new ConfiguracionPrueba { ConfiguracionId = id, TipoPruebaId = 1 });
-
-        Assert.Throws<DbUpdateException>(() => otro.SaveChanges());
+        Assert.Throws<DbUpdateException>(() => context.SaveChanges());
     }
 
     [Fact]

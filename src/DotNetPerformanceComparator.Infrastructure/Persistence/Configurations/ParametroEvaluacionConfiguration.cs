@@ -11,15 +11,13 @@ public class ParametroEvaluacionConfiguration : IEntityTypeConfiguration<Paramet
         builder.ToTable("ParametroEvaluacion");
         builder.HasKey(p => p.Id);
 
-        builder.Property(p => p.TipoPruebaId).IsRequired();
         builder.Property(p => p.Clave).IsRequired();
         builder.Property(p => p.Valor).IsRequired();
 
-        // Cada parámetro pertenece a una ConfiguracionPrueba concreta (clave compuesta),
-        // de modo que la base garantiza a qué tipo de prueba corresponde.
-        builder.HasOne(p => p.ConfiguracionPrueba)
-            .WithMany(cp => cp.Parametros)
-            .HasForeignKey(p => new { p.ConfiguracionId, p.TipoPruebaId })
+        // El tipo del parámetro se deduce de la configuración padre (una configuración = un tipo de prueba).
+        builder.HasOne(p => p.Configuracion)
+            .WithMany(c => c.Parametros)
+            .HasForeignKey(p => p.ConfiguracionId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

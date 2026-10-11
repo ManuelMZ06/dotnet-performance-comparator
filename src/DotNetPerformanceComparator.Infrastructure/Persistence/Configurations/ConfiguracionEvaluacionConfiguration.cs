@@ -32,5 +32,11 @@ public class ConfiguracionEvaluacionConfiguration : IEntityTypeConfiguration<Con
             .WithMany(m => m.ConfiguracionesEvaluacion)
             .HasForeignKey(c => c.MigracionId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Una configuración corresponde a un único tipo de prueba.
+        builder.HasOne(c => c.TipoPrueba)
+            .WithMany(t => t.ConfiguracionesEvaluacion)
+            .HasForeignKey(c => c.TipoPruebaId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -64,11 +64,6 @@ public sealed class ConfigurarEvaluacionService : IConfigurarEvaluacionService
             return ConfigurarEvaluacionResult.Fallo(errorRuta!);
         }
 
-        if (request.TipoPruebaIds.Count == 0)
-        {
-            return ConfigurarEvaluacionResult.Fallo("Seleccione al menos un tipo de prueba.");
-        }
-
         if (request.MetricaIds.Count == 0)
         {
             return ConfigurarEvaluacionResult.Fallo("Seleccione al menos una métrica.");
@@ -95,12 +90,15 @@ public sealed class ConfigurarEvaluacionService : IConfigurarEvaluacionService
             return ConfigurarEvaluacionResult.Fallo("La migración seleccionada no es una migración .NET 10 exitosa.");
         }
 
-        var tipos = await _catalogo.GetTiposPruebaAsync(cancellationToken);
-        var tiposPorId = tipos.ToDictionary(t => t.Id);
-        var tiposPedidos = request.TipoPruebaIds.Distinct().ToList();
-        if (!tiposPedidos.All(tiposPorId.ContainsKey))
+        if (request.TipoPruebaId is not { } tipoPruebaId)
         {
-            return ConfigurarEvaluacionResult.Fallo("Uno o más tipos de prueba seleccionados no son válidos.");
+            return ConfigurarEvaluacionResult.Fallo("Seleccione un tipo de prueba.");
+        }
+
+        var tipo = (await _catalogo.GetTiposPruebaAsync(cancellationToken)).FirstOrDefault(t => t.Id == tipoPruebaId);
+        if (tipo is null)
+        {
+            return ConfigurarEvaluacionResult.Fallo("El tipo de prueba seleccionado no es válido.");
         }
 
         var metricasValidas = (await _catalogo.GetMetricasAsync(cancellationToken)).Select(m => m.Id).ToHashSet();
@@ -110,33 +108,24 @@ public sealed class ConfigurarEvaluacionService : IConfigurarEvaluacionService
             return ConfigurarEvaluacionResult.Fallo("Una o más métricas seleccionadas no son válidas.");
         }
 
-        var pruebas = new List<ConfiguracionPrueba>();
-        foreach (var tipoId in tiposPedidos)
+        if (!TryConstruirParametros(tipo.Nombre, request, out var parametros, out var errorParametro))
         {
-            if (!TryConstruirParametros(tiposPorId[tipoId].Nombre, request, out var parametros, out var errorParametro))
-            {
-                return ConfigurarEvaluacionResult.Fallo(errorParametro!);
-            }
-
-            pruebas.Add(new ConfiguracionPrueba
-            {
-                TipoPruebaId = tipoId,
-                Parametros = parametros.Select(p => new ParametroEvaluacion { TipoPruebaId = tipoId, Clave = p.Clave, Valor = p.Valor }).ToList()
-            });
+            return ConfigurarEvaluacionResult.Fallo(errorParametro!);
         }
 
         var configuracion = new ConfiguracionEvaluacion
         {
             ProyectoId = proyectoId,
             MigracionId = migracionId,
+            TipoPruebaId = tipoPruebaId,
             Nombre = nombre,
             NumeroEjecuciones = ejecuciones,
             RutaObjetivo = ruta,
             Observaciones = NormalizarObservaciones(request.Observaciones),
             Estado = EstadosConfiguracionEvaluacion.Configurada,
             FechaCreacion = _timeProvider.GetUtcNow().UtcDateTime,
-            ConfiguracionesPrueba = pruebas,
-            ConfiguracionesMetrica = metricasPedidas.Select(id => new ConfiguracionMetrica { MetricaId = id }).ToList()
+            ConfiguracionesMetrica = metricasPedidas.Select(id => new ConfiguracionMetrica { MetricaId = id }).ToList(),
+            Parametros = parametros.Select(p => new ParametroEvaluacion { Clave = p.Clave, Valor = p.Valor }).ToList()
         };
 
         try
@@ -187,7 +176,10 @@ public sealed class ConfigurarEvaluacionService : IConfigurarEvaluacionService
         return true;
     }
 
-    /// <summary>Construye y valida los parámetros del tipo de prueba indicado por su nombre de catálogo.</summary>
+    /// <summary>
+    /// Construye los parámetros del tipo seleccionado. Rechaza el request si incluye bloques de
+    /// parámetros de otros tipos (inconsistencia / manipulación).
+    /// </summary>
     private static bool TryConstruirParametros(
         string nombreTipo,
         ConfigurarEvaluacionRequest request,
@@ -196,6 +188,20 @@ public sealed class ConfigurarEvaluacionService : IConfigurarEvaluacionService
     {
         parametros = [];
         error = null;
+
+        var sobra = nombreTipo switch
+        {
+            TiposPruebaConocidos.Carga => request.Estres is not null || request.Concurrencia is not null,
+            TiposPruebaConocidos.Estres => request.Carga is not null || request.Concurrencia is not null,
+            TiposPruebaConocidos.Concurrencia => request.Carga is not null || request.Estres is not null,
+            _ => false
+        };
+
+        if (sobra)
+        {
+            error = "La configuración contiene parámetros que no corresponden al tipo de prueba seleccionado.";
+            return false;
+        }
 
         return nombreTipo switch
         {
