@@ -6,4 +6,8 @@ namespace DotNetPerformanceComparator.Domain.Constants;
 public static class EstadosConfiguracionEvaluacion
 {
     public const string Configurada = "Configurada";
+    public const string EnEjecucion = "EnEjecucion";
+    public const string Finalizada = "Finalizada";
+    public const string Fallida = "Fallida";
+    public const string Cancelada = "Cancelada";
 }

@@ -1,0 +1,158 @@
+@page "/ejecucion/{ConfiguracionId:int}"
+@using System.Globalization
+@using DotNetPerformanceComparator.Application.Evaluations.Execution
+@inject IEjecutarEvaluacionService Servicio
+@inject ILogger<Ejecucion> Logger
+
+@* M-05 (parcial, C-07.1) — CU-04 Ejecutar prueba de rendimiento (Carga; CPU, RAM, Tiempo de respuesta). *@
+
+<PageHeader Title="Ejecución de evaluación"
+            Description="Monitoreo de la prueba en curso y de las métricas recolectadas" />
+
+<OperationMessage Kind="_formulario.MensajeTipo" Message="@_formulario.Mensaje" />
+
+@if (_formulario.Info is { } info)
+{
+    <div class="ejecucion-grid">
+        <div class="ejecucion-grid__estado">
+            <Panel Title="Estado general">
+                <KeyValueList Items="Cabecera(info)" />
+
+                <div class="ejecucion-estado">
+                    <span class="ejecucion-estado__badge ejecucion-estado__badge--@(_formulario.ConfiguracionEstado?.ToLowerInvariant())">
+                        @EstadoTexto(_formulario.ConfiguracionEstado)
+                    </span>
+                    @if (_formulario.Ejecutando)
+                    {
+                        <span class="ejecucion-estado__fase">
+                            @FaseTexto(_formulario.Fase)
+                            @if (_formulario.VersionActual is not null)
+                            {
+                                <text> · @_formulario.VersionActual · repetición @_formulario.RepeticionActual</text>
+                            }
+                        </span>
+                    }
+                </div>
+
+                @if (_formulario.TotalPasos > 0)
+                {
+                    <div class="ejecucion-progreso" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@_formulario.ProgresoPorcentaje">
+                        <div class="ejecucion-progreso__barra" style="width:@_formulario.ProgresoPorcentaje.ToString(CultureInfo.InvariantCulture)%"></div>
+                        <span class="ejecucion-progreso__texto">@_formulario.OrdenGlobal / @_formulario.TotalPasos</span>
+                    </div>
+                }
+
+                @if (_formulario.Fase == FaseEjecucion.Medicion && (_formulario.CpuActual is not null || _formulario.RamActual is not null))
+                {
+                    <div class="ejecucion-vivos">
+                        <span>CPU: @Num(_formulario.CpuActual) %</span>
+                        <span>RAM: @Num(_formulario.RamActual) MB</span>
+                    </div>
+                }
+
+                <div class="ejecucion-acciones">
+                    <button type="button" class="btn btn-success" @onclick="IniciarAsync" disabled="@(!_formulario.PuedeIniciar)">
+                        @(_formulario.Ejecutando ? "Evaluación en curso..." : "Iniciar evaluación")
+                    </button>
+                </div>
+            </Panel>
+
+            @if (_formulario.Resultados.Count > 0)
+            {
+                <Panel Title="Resultados por ejecución">
+                    <table class="resultados-tabla">
+                        <thead>
+                            <tr>
+                                <th>Versión</th><th>Rep.</th><th>Estado</th>
+                                <th>CPU (%)</th><th>RAM (MB)</th><th>Tiempo resp. (ms)</th><th>OK / Fallidas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in _formulario.Resultados)
+                            {
+                                <tr>
+                                    <td>@r.VersionDotNet</td>
+                                    <td>@r.NumeroEjecucion</td>
+                                    <td>@EstadoEjecucionTexto(r.Estado)</td>
+                                    <td>@Num(r.Cpu)</td>
+                                    <td>@Num(r.RamMb)</td>
+                                    <td>@Num(r.TiempoRespuestaMs)</td>
+                                    <td>@r.SolicitudesExitosas / @r.SolicitudesFallidas</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </Panel>
+            }
+        </div>
+
+        <div class="ejecucion-grid__bitacora">
+            <LogConsole Title="Bitácora de ejecución" Lines="_formulario.Bitacora" EmptyText="La bitácora mostrará el proceso al iniciar la evaluación." />
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int ConfiguracionId { get; set; }
+
+    private EjecucionFormulario _formulario = default!;
+
+    protected override Task OnInitializedAsync()
+    {
+        _formulario = new EjecucionFormulario(Servicio, Logger, accion => InvokeAsync(() =>
+        {
+            accion();
+            StateHasChanged();
+        }));
+
+        return _formulario.CargarAsync(ConfiguracionId);
+    }
+
+    // La ejecución pertenece al motor de Application: no se ata un CancellationToken al ciclo de vida
+    // del circuito, de modo que una desconexión/reconexión del navegador no cancela la evaluación en curso.
+    private Task IniciarAsync() => _formulario.IniciarAsync(ConfiguracionId, CancellationToken.None);
+
+    private static IReadOnlyList<KeyValuePair<string, string>> Cabecera(ConfiguracionEjecutableInfo info) =>
+    [
+        new("Evaluación", info.Nombre),
+        new("Proyecto", info.Proyecto),
+        new("Tipo de prueba", info.TipoPrueba),
+        new("Endpoint", $"{info.RutaObjetivo} (GET)"),
+        new("Ejecuciones", info.NumeroEjecuciones.ToString(CultureInfo.InvariantCulture)),
+        new("Versiones", ".NET 8 / .NET 10"),
+        new("Métricas", string.Join(", ", info.Metricas))
+    ];
+
+    private static string Num(decimal? valor) =>
+        valor is { } v ? v.ToString("0.##", CultureInfo.InvariantCulture) : "—";
+
+    private static string EstadoTexto(string? estado) => estado switch
+    {
+        "Configurada" => "Configurada",
+        "EnEjecucion" => "En ejecución",
+        "Finalizada" => "Finalizada",
+        "Fallida" => "Fallida",
+        "Cancelada" => "Cancelada",
+        _ => estado ?? "—"
+    };
+
+    private static string EstadoEjecucionTexto(string estado) => estado switch
+    {
+        "Completada" => "Completada",
+        "Fallida" => "Fallida",
+        "Cancelada" => "Cancelada",
+        _ => estado
+    };
+
+    private static string FaseTexto(FaseEjecucion? fase) => fase switch
+    {
+        FaseEjecucion.Preparacion => "Preparación",
+        FaseEjecucion.Readiness => "Readiness",
+        FaseEjecucion.WarmUp => "Warm-up",
+        FaseEjecucion.RampUp => "Ramp-up",
+        FaseEjecucion.Medicion => "Medición",
+        FaseEjecucion.Finalizado => "Finalizado",
+        _ => ""
+    };
+}

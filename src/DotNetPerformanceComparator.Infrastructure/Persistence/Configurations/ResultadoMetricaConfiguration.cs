@@ -14,6 +14,9 @@ public class ResultadoMetricaConfiguration : IEntityTypeConfiguration<ResultadoM
         // SQLite almacena decimal como TEXT, sin pérdida de precisión (ver D-11 en docs/PROJECT_CONTEXT.md).
         builder.Property(r => r.Valor).IsRequired();
 
+        // Una ejecución tiene a lo sumo un resultado final por métrica.
+        builder.HasIndex(r => new { r.EjecucionId, r.MetricaId }).IsUnique();
+
         builder.HasOne(r => r.Ejecucion)
             .WithMany(e => e.Resultados)
             .HasForeignKey(r => r.EjecucionId)

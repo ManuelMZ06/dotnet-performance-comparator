@@ -134,7 +134,8 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConfiguracionId");
+                    b.HasIndex("ConfiguracionId", "VersionDotNet", "NumeroEjecucion")
+                        .IsUnique();
 
                     b.ToTable("Ejecucion", (string)null);
                 });
@@ -319,9 +320,10 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("EjecucionId");
-
                     b.HasIndex("MetricaId");
+
+                    b.HasIndex("EjecucionId", "MetricaId")
+                        .IsUnique();
 
                     b.ToTable("ResultadoMetrica", (string)null);
                 });

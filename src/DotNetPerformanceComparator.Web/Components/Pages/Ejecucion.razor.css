@@ -1,0 +1,121 @@
+.ejecucion-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 1.75rem;
+    align-items: start;
+}
+
+.ejecucion-grid__estado {
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+}
+
+.ejecucion-estado {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+.ejecucion-estado__badge {
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--color-primary-soft);
+    color: var(--color-primary-text-dark);
+}
+
+    .ejecucion-estado__badge--enejecucion {
+        background: #fef3c7;
+        color: #78350f;
+    }
+
+    .ejecucion-estado__badge--finalizada {
+        background: #dcfce7;
+        color: #14532d;
+    }
+
+    .ejecucion-estado__badge--fallida,
+    .ejecucion-estado__badge--cancelada {
+        background: #fee2e2;
+        color: #7f1d1d;
+    }
+
+.ejecucion-estado__fase {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.ejecucion-progreso {
+    position: relative;
+    height: 22px;
+    margin-top: 1rem;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.ejecucion-progreso__barra {
+    height: 100%;
+    background: var(--color-primary);
+    transition: width 0.3s ease;
+}
+
+.ejecucion-progreso__texto {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--color-text);
+}
+
+.ejecucion-vivos {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.ejecucion-acciones {
+    margin-top: 1.5rem;
+}
+
+    .ejecucion-acciones .btn {
+        min-width: 180px;
+    }
+
+.resultados-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+    .resultados-tabla th,
+    .resultados-tabla td {
+        padding: 0.5rem 0.6rem;
+        border: 1px solid var(--color-border);
+        text-align: center;
+    }
+
+    .resultados-tabla thead th {
+        background: var(--color-primary-soft);
+        color: var(--color-primary-text-dark);
+    }
+
+@media (max-width: 1100px) {
+    .ejecucion-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .ejecucion-acciones .btn {
+        width: 100%;
+    }
+}

@@ -1,4 +1,5 @@
 using DotNetPerformanceComparator.Application.Evaluations.Configuration;
+using DotNetPerformanceComparator.Application.Evaluations.Execution;
 using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +24,10 @@ public static class DependencyInjection
 
         // CU-03
         services.AddScoped<IConfigurarEvaluacionService, ConfigurarEvaluacionService>();
+
+        // CU-04 (C-07.1)
+        services.AddSingleton<IEvaluationExecutionGate, EvaluationExecutionGate>();
+        services.AddScoped<IEjecutarEvaluacionService, EjecutarEvaluacionService>();
 
         return services;
     }

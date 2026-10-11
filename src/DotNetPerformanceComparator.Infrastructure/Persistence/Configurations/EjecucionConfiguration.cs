@@ -16,6 +16,9 @@ public class EjecucionConfiguration : IEntityTypeConfiguration<Ejecucion>
         builder.Property(e => e.FechaInicio).IsRequired();
         builder.Property(e => e.Estado).IsRequired();
 
+        // Dentro de una configuración, cada combinación versión/repetición aparece una sola vez.
+        builder.HasIndex(e => new { e.ConfiguracionId, e.VersionDotNet, e.NumeroEjecucion }).IsUnique();
+
         builder.HasOne(e => e.Configuracion)
             .WithMany(c => c.Ejecuciones)
             .HasForeignKey(e => e.ConfiguracionId)
