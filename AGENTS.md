@@ -1,4 +1,4 @@
-cs# AGENTS.md — Reglas operativas
+# AGENTS.md — Reglas operativas
 
 Reglas que todo agente o desarrollador debe consultar antes de cada tarea en **DotNetPerformanceComparator**.
 
@@ -80,5 +80,7 @@ Web → Infrastructure únicamente como composition root / DI (Program.cs).
 ## Entorno
 
 - Herramienta: `net8.0` (no modificar los `TargetFramework`).
-- SDK fijado en `global.json` a 8.0.425 con `rollForward: latestFeature` (nunca usa el SDK 10).
+- El repositorio host está **fijado a .NET 8** mediante `global.json` (`8.0.425`, `rollForward: latestFeature`): el build y las pruebas del repositorio siempre usan el SDK 8.
+- **.NET 10 solo se selecciona explícitamente dentro del flujo experimental aislado** (CU-02/CU-04), en workspaces temporales. **Nunca** modificar el `global.json` del repositorio para ejecutar la versión experimental.
+- Para el flujo experimental completo, el equipo debe tener instalados un SDK estable de .NET 8 y uno de .NET 10.
 - Sistema principal: Windows 11.
