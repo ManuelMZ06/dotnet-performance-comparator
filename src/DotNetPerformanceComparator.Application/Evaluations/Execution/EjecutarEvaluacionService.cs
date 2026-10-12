@@ -15,9 +15,12 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
 {
     public const int IntervaloMuestreoMs = 1000;
 
-    /// <summary>Métricas soportadas por el motor en C-07.1.</summary>
+    /// <summary>Métricas soportadas por el motor de Carga desde C-07.2 (las seis del catálogo).</summary>
     public static IReadOnlyList<string> MetricasSoportadas { get; } =
-        [NombresMetrica.Cpu, NombresMetrica.MemoriaRam, NombresMetrica.TiempoRespuesta];
+    [
+        NombresMetrica.Cpu, NombresMetrica.MemoriaRam, NombresMetrica.TiempoRespuesta,
+        NombresMetrica.Latencia, NombresMetrica.Throughput, NombresMetrica.TamanoAplicacion
+    ];
 
     private readonly IEvaluationExecutionRepository _repo;
     private readonly IEvaluationExecutionGate _gate;
@@ -242,7 +245,11 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
             }
 
             var agg = ResourceAggregator.Aggregate(muestras, Environment.ProcessorCount);
-            var resultados = ConstruirResultados(metricas, agg, (decimal)load.TiempoRespuestaMedioMs, out var faltante);
+            var inputs = new MetricInputs(
+                agg.CpuPorcentaje, agg.MemoriaMb,
+                load.TiempoRespuestaMedioMs, load.LatenciaP95Ms, load.ThroughputExitosoRps,
+                version.PublishedSizeBytes);
+            var (resultados, faltante) = EvaluationMetricResultBuilder.Build(metricas, inputs);
             if (faltante is not null)
             {
                 await PersistirEjecucionAsync(config, carga, paso, version, orden, EstadosEjecucion.Fallida, inicio, load.SolicitudesExitosas, load.SolicitudesFallidas, null, CancellationToken.None);
@@ -335,7 +342,9 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
             : BuscarValor(config, nombre, resultados);
 
         return new EjecucionResumen(version.VersionDotNet, paso.NumeroEjecucion, orden, estado,
-            ValorDe(NombresMetrica.Cpu), ValorDe(NombresMetrica.MemoriaRam), ValorDe(NombresMetrica.TiempoRespuesta), exitosas, fallidas);
+            ValorDe(NombresMetrica.Cpu), ValorDe(NombresMetrica.MemoriaRam), ValorDe(NombresMetrica.TiempoRespuesta),
+            ValorDe(NombresMetrica.Latencia), ValorDe(NombresMetrica.Throughput), ValorDe(NombresMetrica.TamanoAplicacion),
+            exitosas, fallidas);
     }
 
     private static decimal? BuscarValor(ConfiguracionEvaluacion config, string nombre, IReadOnlyList<(int MetricaId, decimal Valor)> resultados)
@@ -381,34 +390,6 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         ];
 
         return condiciones.Select(c => new CondicionEjecucion { Clave = c.Clave, Valor = c.Valor }).ToList();
-    }
-
-    /// <summary>Construye los resultados de las métricas seleccionadas; <paramref name="faltante"/> indica cuál no pudo obtenerse.</summary>
-    private static List<(int MetricaId, decimal Valor)> ConstruirResultados(
-        IReadOnlyList<Metrica> metricas, ResourceAggregates agg, decimal tiempoRespuestaMs, out string? faltante)
-    {
-        faltante = null;
-        var resultados = new List<(int, decimal)>();
-        foreach (var metrica in metricas)
-        {
-            decimal? valor = metrica.Nombre switch
-            {
-                NombresMetrica.Cpu => agg.CpuPorcentaje,
-                NombresMetrica.MemoriaRam => agg.MemoriaMb,
-                NombresMetrica.TiempoRespuesta => tiempoRespuestaMs,
-                _ => null
-            };
-
-            if (valor is null)
-            {
-                faltante = metrica.Nombre;
-                return [];
-            }
-
-            resultados.Add((metrica.Id, valor.Value));
-        }
-
-        return resultados;
     }
 
     private async Task<EjecutarEvaluacionResult> FinalizarConfiguracionAsync(

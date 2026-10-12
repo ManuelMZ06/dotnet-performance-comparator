@@ -154,6 +154,11 @@ public sealed class ExecutionWorkspacePreparer : IExecutionWorkspacePreparer
             return (null, $"{versionDotNet}: {error}");
         }
 
-        return (new PreparedVersion(versionDotNet, tfm, publishDir, entry, sdk), null);
+        // Tamaño del publish congelado aquí: tras publish correcto y antes de iniciar cualquier proceso
+        // objetivo, para que los archivos de runtime (logs, SQLite, cachés) no alteren la medición (C-07.2).
+        var tamanoBytes = PublishedSizeCalculator.CalculateBytes(publishDir);
+        log($"{versionDotNet}: tamaño del publish {PublishedSizeCalculator.BytesToMb(tamanoBytes):0.##} MB ({tamanoBytes} bytes)");
+
+        return (new PreparedVersion(versionDotNet, tfm, publishDir, entry, sdk, tamanoBytes), null);
     }
 }

@@ -38,6 +38,9 @@ public sealed record EjecucionResumen(
     decimal? Cpu,
     decimal? RamMb,
     decimal? TiempoRespuestaMs,
+    decimal? LatenciaP95Ms,
+    decimal? ThroughputRps,
+    decimal? TamanoMb,
     long SolicitudesExitosas,
     long SolicitudesFallidas);
 

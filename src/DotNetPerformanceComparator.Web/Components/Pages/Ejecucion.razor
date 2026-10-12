@@ -64,7 +64,9 @@
                         <thead>
                             <tr>
                                 <th>Versión</th><th>Rep.</th><th>Estado</th>
-                                <th>CPU (%)</th><th>RAM (MB)</th><th>Tiempo resp. (ms)</th><th>OK / Fallidas</th>
+                                <th>CPU (%)</th><th>RAM (MB)</th><th>Tiempo resp. prom. (ms)</th>
+                                <th>Latencia P95 (ms)</th><th>Throughput (req/s)</th><th>Tamaño (MB)</th>
+                                <th>OK / Fallidas</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -77,6 +79,9 @@
                                     <td>@Num(r.Cpu)</td>
                                     <td>@Num(r.RamMb)</td>
                                     <td>@Num(r.TiempoRespuestaMs)</td>
+                                    <td>@Num(r.LatenciaP95Ms)</td>
+                                    <td>@Num(r.ThroughputRps)</td>
+                                    <td>@Num(r.TamanoMb)</td>
                                     <td>@r.SolicitudesExitosas / @r.SolicitudesFallidas</td>
                                 </tr>
                             }

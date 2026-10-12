@@ -17,7 +17,11 @@ public interface IEvaluationExecutionGate
 /// <param name="PublishDirectory">Carpeta de publish framework-dependent (Release).</param>
 /// <param name="EntryAssemblyPath">DLL de entrada determinado desde el runtimeconfig.</param>
 /// <param name="SdkVersion">SDK utilizado para restore/publish.</param>
-public sealed record PreparedVersion(string VersionDotNet, string TargetFramework, string PublishDirectory, string EntryAssemblyPath, string SdkVersion);
+/// <param name="PublishedSizeBytes">
+/// Suma recursiva, en bytes, de todos los archivos del directorio de publish. Se congela inmediatamente
+/// después de un publish correcto y antes de iniciar cualquier proceso objetivo (C-07.2).
+/// </param>
+public sealed record PreparedVersion(string VersionDotNet, string TargetFramework, string PublishDirectory, string EntryAssemblyPath, string SdkVersion, long PublishedSizeBytes);
 
 public sealed record PreparedWorkspace(string RootDirectory, PreparedVersion Net8, PreparedVersion Net10);
 
@@ -64,8 +68,16 @@ public interface ITargetAppLauncher
 public sealed record LoadPhaseRequest(Uri BaseUrl, string RutaObjetivo, int Usuarios, TimeSpan Duracion, int IntervaloSolicitudesMs, bool Ramping);
 
 /// <param name="Started">El motor de carga pudo iniciarse.</param>
-/// <param name="TiempoRespuestaMedioMs">Media de latencia de las solicitudes exitosas del paso medido.</param>
-public sealed record LoadPhaseResult(bool Started, long SolicitudesExitosas, long SolicitudesFallidas, double TiempoRespuestaMedioMs);
+/// <param name="TiempoRespuestaMedioMs">Media (Mean) de latencia de las solicitudes exitosas del paso medido.</param>
+/// <param name="LatenciaP95Ms">Percentil 95 (P95) de latencia de las solicitudes exitosas del paso medido.</param>
+/// <param name="ThroughputExitosoRps">Solicitudes exitosas por segundo (RPS) del paso medido.</param>
+public sealed record LoadPhaseResult(
+    bool Started,
+    long SolicitudesExitosas,
+    long SolicitudesFallidas,
+    double TiempoRespuestaMedioMs,
+    double LatenciaP95Ms,
+    double ThroughputExitosoRps);
 
 /// <summary>
 /// Motor de generación de carga HTTP GET. Mide solo la solicitud HTTP; el intervalo entre

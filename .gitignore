@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 *.db
 *.db-shm
 *.db-wal
+
+# Configuración local de ejecución de Claude Code
+.claude/launch.json

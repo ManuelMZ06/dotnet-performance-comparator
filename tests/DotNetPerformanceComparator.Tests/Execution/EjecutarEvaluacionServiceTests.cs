@@ -10,6 +10,12 @@ public class EjecutarEvaluacionServiceTests
 {
     private const int CargaId = 1, EstresId = 2;
 
+    private static readonly string[] SeisMetricas =
+    [
+        NombresMetrica.Cpu, NombresMetrica.MemoriaRam, NombresMetrica.TiempoRespuesta,
+        NombresMetrica.Latencia, NombresMetrica.Throughput, NombresMetrica.TamanoAplicacion
+    ];
+
     // ---------------------------------------------------------------- fakes
 
     private sealed class FakeRepo : IEvaluationExecutionRepository
@@ -45,18 +51,23 @@ public class EjecutarEvaluacionServiceTests
 
     private sealed class FakePreparer(bool exito = true) : IExecutionWorkspacePreparer
     {
+        public const long TamanoNet8Bytes = 16_153_804; // ~15.40 MB
+        public const long TamanoNet10Bytes = 15_675_392; // ~14.95 MB
+
+        public int PrepareLlamadas { get; private set; }
         public int CleanupLlamadas { get; private set; }
 
         public Task<WorkspacePreparationResult> PrepareAsync(PrepareWorkspaceRequest req, Action<string>? onLog, CancellationToken ct = default)
         {
+            PrepareLlamadas++;
             if (!exito)
             {
                 return Task.FromResult(new WorkspacePreparationResult(false, "falló preparación", null));
             }
 
             var ws = new PreparedWorkspace("/tmp/ws",
-                new PreparedVersion(VersionesDotNet.Net8, "net8.0", "/tmp/ws/net8/publish", "/tmp/ws/net8/publish/app.dll", "8.0.425"),
-                new PreparedVersion(VersionesDotNet.Net10, "net10.0", "/tmp/ws/net10/publish", "/tmp/ws/net10/publish/app.dll", "10.0.400"));
+                new PreparedVersion(VersionesDotNet.Net8, "net8.0", "/tmp/ws/net8/publish", "/tmp/ws/net8/publish/app.dll", "8.0.425", TamanoNet8Bytes),
+                new PreparedVersion(VersionesDotNet.Net10, "net10.0", "/tmp/ws/net10/publish", "/tmp/ws/net10/publish/app.dll", "10.0.400", TamanoNet10Bytes));
             return Task.FromResult(new WorkspacePreparationResult(true, null, ws));
         }
 
@@ -107,6 +118,8 @@ public class EjecutarEvaluacionServiceTests
         public long Exitosas { get; init; } = 100;
         public long Fallidas { get; init; }
         public double MediaMs { get; init; } = 12.5;
+        public double P95Ms { get; init; } = 24.8;
+        public double Rps { get; init; } = 47.6;
         public int StableDelayMs { get; init; } = 2200; // deja que el muestreo tome ≥2 muestras
 
         public ConcurrentBag<LoadPhaseRequest> Llamadas { get; } = [];
@@ -119,7 +132,7 @@ public class EjecutarEvaluacionServiceTests
                 await Task.Delay(StableDelayMs, ct); // fase estable
             }
 
-            return new LoadPhaseResult(true, Exitosas, Fallidas, MediaMs);
+            return new LoadPhaseResult(true, Exitosas, Fallidas, MediaMs, P95Ms, Rps);
         }
     }
 
@@ -220,12 +233,23 @@ public class EjecutarEvaluacionServiceTests
     }
 
     [Fact]
-    public async Task MetricaNoSoportada_EsRechazada()
+    public async Task MetricaFueraDelCatalogo_EsRechazada()
     {
-        var repo = new FakeRepo { Config = Config(metricas: [NombresMetrica.Cpu, NombresMetrica.Latencia]) };
+        // Desde C-07.2 las seis métricas del catálogo están soportadas; la rama defensiva solo
+        // rechaza un nombre que no pertenezca al catálogo soportado.
+        var repo = new FakeRepo { Config = Config(metricas: [NombresMetrica.Cpu, "Métrica inventada"]) };
         var r = await EjecutarAsync(Crear(repo));
         Assert.False(r.Exito);
-        Assert.Contains("Latencia", r.Mensaje);
+        Assert.Contains("Métrica inventada", r.Mensaje);
+    }
+
+    [Fact]
+    public async Task SeisMetricasDelCatalogo_SonAceptadas()
+    {
+        var repo = new FakeRepo { Config = Config(metricas: SeisMetricas) };
+        var info = await Crear(repo).ObtenerInfoAsync(1);
+        Assert.NotNull(info);
+        Assert.True(info!.PuedeEjecutar);
     }
 
     [Fact]
@@ -328,6 +352,61 @@ public class EjecutarEvaluacionServiceTests
         Assert.All(repo.Ejecuciones, e =>
             Assert.Contains(e.Condiciones, c =>
                 c.Clave == ClavesCondicionEjecucion.Environment && c.Valor == "Production"));
+    }
+
+    [Fact]
+    public async Task SeisMetricas_CadaEjecucionCompletadaTieneSeisResultados()
+    {
+        var repo = new FakeRepo { Config = Config(numeroEjecuciones: 2, metricas: SeisMetricas) };
+        var r = await EjecutarAsync(Crear(repo));
+
+        Assert.True(r.Exito);
+        Assert.Equal(4, repo.Ejecuciones.Count); // 2 repeticiones × 2 versiones
+        Assert.All(repo.Ejecuciones, e =>
+        {
+            Assert.Equal(EstadosEjecucion.Completada, e.Estado);
+            Assert.Equal(6, e.Resultados.Count);
+        });
+        Assert.Equal(24, repo.Ejecuciones.Sum(e => e.Resultados.Count)); // 4 × 6
+    }
+
+    [Fact]
+    public async Task Tamano_SeReutilizaPorVersionYPreparaUnaSolaVez()
+    {
+        var preparer = new FakePreparer();
+        var repo = new FakeRepo { Config = Config(numeroEjecuciones: 2, metricas: SeisMetricas) };
+        await EjecutarAsync(Crear(repo, preparer: preparer));
+
+        Assert.Equal(1, preparer.PrepareLlamadas); // tamaño calculado una sola vez por versión
+
+        var tamanoId = repo.Config!.ConfiguracionesMetrica.Single(cm => cm.Metrica.Nombre == NombresMetrica.TamanoAplicacion).MetricaId;
+        decimal Mb(long bytes) => (decimal)bytes / (1024 * 1024);
+
+        Assert.All(repo.Ejecuciones, e =>
+        {
+            var tamano = e.Resultados.Single(x => x.MetricaId == tamanoId).Valor;
+            var esperado = e.VersionDotNet == VersionesDotNet.Net8 ? Mb(FakePreparer.TamanoNet8Bytes) : Mb(FakePreparer.TamanoNet10Bytes);
+            Assert.Equal(esperado, tamano);
+        });
+    }
+
+    [Fact]
+    public async Task Latencia_UsaP95_YThroughput_UsaRps()
+    {
+        var load = new FakeLoadRunner { MediaMs = 10.5, P95Ms = 24.8, Rps = 47.6 };
+        var repo = new FakeRepo { Config = Config(metricas: SeisMetricas) };
+        await EjecutarAsync(Crear(repo, loadRunner: load));
+
+        var e = repo.Ejecuciones.First(x => x.Estado == EstadosEjecucion.Completada);
+        decimal ValorDe(string nombre)
+        {
+            var id = repo.Config!.ConfiguracionesMetrica.Single(cm => cm.Metrica.Nombre == nombre).MetricaId;
+            return e.Resultados.Single(x => x.MetricaId == id).Valor;
+        }
+
+        Assert.Equal(10.5m, ValorDe(NombresMetrica.TiempoRespuesta)); // Mean
+        Assert.Equal(24.8m, ValorDe(NombresMetrica.Latencia));        // P95, no Mean
+        Assert.Equal(47.6m, ValorDe(NombresMetrica.Throughput));      // RPS, no Count
     }
 
     [Fact]

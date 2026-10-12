@@ -67,13 +67,21 @@ public sealed class NBomberLoadRunner : ILoadRunner
                 .WithReportFormats()
                 .Run();
 
+            // Estadísticas específicas del Step "request" (no del escenario): el delay de pacing ocurre
+            // fuera del Step, por lo que Mean/P95 reflejan solo la solicitud HTTP. Solo bloque Ok.
             var step = stats.ScenarioStats[0].StepStats.First(s => s.StepName == PasoRequest);
-            return new LoadPhaseResult(true, step.Ok.Request.Count, step.Fail.Request.Count, step.Ok.Latency.MeanMs);
+            return new LoadPhaseResult(
+                true,
+                step.Ok.Request.Count,
+                step.Fail.Request.Count,
+                step.Ok.Latency.MeanMs,
+                step.Ok.Latency.Percent95,
+                step.Ok.Request.RPS);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al ejecutar la fase de carga con NBomber.");
-            return new LoadPhaseResult(false, 0, 0, 0);
+            return new LoadPhaseResult(false, 0, 0, 0, 0, 0);
         }
         finally
         {
