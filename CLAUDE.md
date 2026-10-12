@@ -16,7 +16,8 @@ Instrucciones iniciales para trabajar en **DotNetPerformanceComparator**. Este a
 7. No alterar migraciones EF Core históricas.
 8. No agregar funcionalidades fuera del alcance solicitado.
 9. No modificar los proyectos .NET evaluados originales ni el `global.json` del repositorio.
-10. Usar mensajes de commit en español cuando se solicite un commit.
+10. Usar mensajes de commit en español cuando se solicite un commit (convención en [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
+11. En ramas `feature/`/`fix/`/`docs/`, no hacer merge a `main` automáticamente: integrar solo vía PR con CI en verde.
 
 ## Comandos útiles
 

@@ -175,6 +175,7 @@ dotnet test
 
 - [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) — fuente de verdad técnica y funcional (casos de uso, arquitectura, modelo de datos, decisiones D-xx).
 - [docs/UI_SPEC.md](docs/UI_SPEC.md) — decisiones e implementación de las interfaces (M-01…M-08, decisiones UI-xx, brechas B-xx).
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — gobierno del repositorio: ramas, commits, CI y versionado.
 - [docs/mockups/](docs/mockups/) — referencias visuales de las pantallas.
 
 ## Próximos pasos
