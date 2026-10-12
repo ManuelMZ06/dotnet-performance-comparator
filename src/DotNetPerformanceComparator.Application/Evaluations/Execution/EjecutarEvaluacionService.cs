@@ -23,8 +23,9 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         NombresMetrica.Latencia, NombresMetrica.Throughput, NombresMetrica.TamanoAplicacion
     ];
 
-    /// <summary>Tipos de prueba habilitados en el motor (C-07.3: Carga y Estrés; Concurrencia pendiente).</summary>
-    public static IReadOnlyList<string> TiposSoportados { get; } = [TiposPruebaConocidos.Carga, TiposPruebaConocidos.Estres];
+    /// <summary>Tipos de prueba habilitados en el motor (C-07.4: Carga, Estrés y Concurrencia).</summary>
+    public static IReadOnlyList<string> TiposSoportados { get; } =
+        [TiposPruebaConocidos.Carga, TiposPruebaConocidos.Estres, TiposPruebaConocidos.Concurrencia];
 
     private readonly IEvaluationExecutionRepository _repo;
     private readonly IEvaluationExecutionGate _gate;
@@ -32,6 +33,7 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
     private readonly ITargetAppLauncher _launcher;
     private readonly ILoadRunner _loadRunner;
     private readonly IStressExecutionRunner _stressRunner;
+    private readonly IConcurrencyExecutionRunner _concurrencyRunner;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<EjecutarEvaluacionService> _logger;
     private readonly int _intervaloMuestreoMs;
@@ -43,6 +45,7 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         ITargetAppLauncher launcher,
         ILoadRunner loadRunner,
         IStressExecutionRunner stressRunner,
+        IConcurrencyExecutionRunner concurrencyRunner,
         TimeProvider timeProvider,
         ILogger<EjecutarEvaluacionService> logger,
         int intervaloMuestreoMs = IntervaloMuestreoMs)
@@ -53,6 +56,7 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         _launcher = launcher;
         _loadRunner = loadRunner;
         _stressRunner = stressRunner;
+        _concurrencyRunner = concurrencyRunner;
         _timeProvider = timeProvider;
         _logger = logger;
         _intervaloMuestreoMs = intervaloMuestreoMs;
@@ -113,9 +117,10 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         IProgress<EvaluationExecutionProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var esEstres = config.TipoPrueba.Nombre == TiposPruebaConocidos.Estres;
-        var carga = esEstres ? null : LeerParametrosCarga(config);
-        var estres = esEstres ? LeerParametrosEstres(config) : null;
+        var tipo = config.TipoPrueba.Nombre;
+        var carga = tipo == TiposPruebaConocidos.Carga ? LeerParametrosCarga(config) : null;
+        var estres = tipo == TiposPruebaConocidos.Estres ? LeerParametrosEstres(config) : null;
+        var concurrencia = tipo == TiposPruebaConocidos.Concurrencia ? LeerParametrosConcurrencia(config) : null;
 
         void Log(string linea) => progress?.Report(new EvaluationExecutionProgress(config.Estado, LogLine: linea));
 
@@ -146,9 +151,12 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
                 orden++;
                 var version = paso.VersionDotNet == VersionesDotNet.Net8 ? workspace.Net8 : workspace.Net10;
 
-                var (completada, mensaje) = esEstres
-                    ? await EjecutarPasoEstresAsync(config, metricas, estres!, paso, version, orden, secuencia.Count, progress, cancellationToken)
-                    : await EjecutarPasoCargaAsync(config, metricas, carga!, paso, version, orden, secuencia.Count, progress, cancellationToken);
+                var (completada, mensaje) = tipo switch
+                {
+                    TiposPruebaConocidos.Estres => await EjecutarPasoEstresAsync(config, metricas, estres!, paso, version, orden, secuencia.Count, progress, cancellationToken),
+                    TiposPruebaConocidos.Concurrencia => await EjecutarPasoConcurrenciaAsync(config, metricas, concurrencia!, paso, version, orden, secuencia.Count, progress, cancellationToken),
+                    _ => await EjecutarPasoCargaAsync(config, metricas, carga!, paso, version, orden, secuencia.Count, progress, cancellationToken)
+                };
                 if (!completada)
                 {
                     return await FinalizarConfiguracionAsync(config, EstadosConfiguracionEvaluacion.Fallida, progress,
@@ -415,6 +423,140 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         return condiciones.Select(c => new CondicionEjecucion { Clave = c.Clave, Valor = c.Valor }).ToList();
     }
 
+    // ----------------------------------------------------------------- Concurrencia (C-07.4)
+
+    private async Task<(bool Completada, string Mensaje)> EjecutarPasoConcurrenciaAsync(
+        ConfiguracionEvaluacion config,
+        IReadOnlyList<Metrica> metricas,
+        ParametrosConcurrencia concurrencia,
+        PasoEjecucion paso,
+        PreparedVersion version,
+        int orden,
+        int totalPasos,
+        IProgress<EvaluationExecutionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var inicio = _timeProvider.GetUtcNow().UtcDateTime;
+        ITargetApp? app = null;
+        try
+        {
+            progress?.Report(new EvaluationExecutionProgress(EstadosConfiguracionEvaluacion.EnEjecucion, FaseEjecucion.Readiness,
+                version.VersionDotNet, paso.NumeroEjecucion, orden, totalPasos,
+                $"[{version.VersionDotNet} · repetición {paso.NumeroEjecucion}] Iniciando aplicación objetivo..."));
+            app = await _launcher.StartAsync(version, cancellationToken);
+
+            if (!await app.WaitUntilReadyAsync(config.RutaObjetivo, cancellationToken) || app.HasExited)
+            {
+                await PersistirConcurrenciaAsync(config, concurrencia, paso, version, orden, EstadosEjecucion.Fallida, inicio,
+                    0, 0, 0, 0, null, CancellationToken.None);
+                return (false, $"La aplicación {version.VersionDotNet} no respondió en {config.RutaObjetivo}.");
+            }
+
+            var contexto = new ConcurrencyExecutionContext(
+                config.RutaObjetivo, app, version, paso, orden, totalPasos, metricas, concurrencia, _intervaloMuestreoMs);
+
+            ConcurrencyExecutionOutcome outcome;
+            try
+            {
+                outcome = await _concurrencyRunner.EjecutarAsync(contexto, progress, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                await PersistirConcurrenciaAsync(config, concurrencia, paso, version, orden, EstadosEjecucion.Cancelada, inicio,
+                    (long)concurrencia.UsuariosConcurrentes * concurrencia.Rondas, 0, 0, 0, null, CancellationToken.None);
+                throw;
+            }
+
+            var resumen = await PersistirConcurrenciaAsync(config, concurrencia, paso, version, orden, outcome.EstadoEjecucion, inicio,
+                outcome.SolicitudesEsperadas, outcome.SolicitudesExitosas, outcome.SolicitudesFallidas,
+                outcome.DesfaseInicioPromedioMs, outcome.Resultados, CancellationToken.None, outcome.DesfaseInicioMaximoMs);
+
+            progress?.Report(new EvaluationExecutionProgress(EstadosConfiguracionEvaluacion.EnEjecucion, FaseEjecucion.Concurrencia,
+                version.VersionDotNet, paso.NumeroEjecucion, orden, totalPasos,
+                $"[{version.VersionDotNet} · repetición {paso.NumeroEjecucion}] {outcome.Mensaje}", EjecucionFinalizada: resumen));
+
+            return (outcome.EstadoEjecucion == EstadosEjecucion.Completada, outcome.Mensaje);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error en la ejecución de concurrencia {Version} #{Numero} de la configuración {ConfiguracionId}.", version.VersionDotNet, paso.NumeroEjecucion, config.Id);
+            return (false, $"Error inesperado al ejecutar {version.VersionDotNet}.");
+        }
+        finally
+        {
+            if (app is not null)
+            {
+                await app.DisposeAsync();
+            }
+        }
+    }
+
+    private async Task<EjecucionResumen> PersistirConcurrenciaAsync(
+        ConfiguracionEvaluacion config, ParametrosConcurrencia concurrencia, PasoEjecucion paso, PreparedVersion version,
+        int orden, string estado, DateTime inicio, long esperadas, long exitosas, long fallidas, double desfasePromedio,
+        IReadOnlyList<(int MetricaId, decimal Valor)>? resultados, CancellationToken cancellationToken, double desfaseMaximo = 0)
+    {
+        var ejecucion = new Ejecucion
+        {
+            ConfiguracionId = config.Id,
+            VersionDotNet = version.VersionDotNet,
+            NumeroEjecucion = paso.NumeroEjecucion,
+            FechaInicio = inicio,
+            FechaFin = _timeProvider.GetUtcNow().UtcDateTime,
+            Estado = estado,
+            Condiciones = ConstruirCondicionesConcurrencia(config, concurrencia, version, orden, esperadas, exitosas, fallidas, desfaseMaximo, desfasePromedio),
+            Resultados = (resultados ?? []).Select(res => new ResultadoMetrica { MetricaId = res.MetricaId, Valor = res.Valor }).ToList()
+        };
+
+        try
+        {
+            await _repo.AgregarEjecucionAsync(ejecucion, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "No fue posible persistir la ejecución de concurrencia {Version} #{Numero}.", version.VersionDotNet, paso.NumeroEjecucion);
+        }
+
+        decimal? ValorDe(string nombre) => resultados is null ? null : BuscarValor(config, nombre, resultados);
+        return new EjecucionResumen(version.VersionDotNet, paso.NumeroEjecucion, orden, estado,
+            ValorDe(NombresMetrica.Cpu), ValorDe(NombresMetrica.MemoriaRam), ValorDe(NombresMetrica.TiempoRespuesta),
+            ValorDe(NombresMetrica.Latencia), ValorDe(NombresMetrica.Throughput), ValorDe(NombresMetrica.TamanoAplicacion),
+            exitosas, fallidas);
+    }
+
+    private List<CondicionEjecucion> ConstruirCondicionesConcurrencia(
+        ConfiguracionEvaluacion config, ParametrosConcurrencia c, PreparedVersion version, int orden,
+        long esperadas, long exitosas, long fallidas, double desfaseMaximo, double desfasePromedio)
+    {
+        (string Clave, string Valor)[] condiciones =
+        [
+            (ClavesCondicionEjecucion.TipoPrueba, config.TipoPrueba.Nombre),
+            (ClavesCondicionEjecucion.MetodoHttp, ConfigurarEvaluacionService.MetodoHttp),
+            (ClavesCondicionEjecucion.RutaObjetivo, config.RutaObjetivo),
+            (ClavesParametroConcurrencia.UsuariosConcurrentes, c.UsuariosConcurrentes.ToString(CultureInfo.InvariantCulture)),
+            (ClavesParametroConcurrencia.Rondas, c.Rondas.ToString(CultureInfo.InvariantCulture)),
+            (ClavesParametroConcurrencia.WarmUpSegundos, c.WarmUpSegundos.ToString(CultureInfo.InvariantCulture)),
+            (ClavesParametroConcurrencia.IntervaloRondasMs, c.IntervaloRondasMs.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.ConfiguracionCompilacion, "Release"),
+            (ClavesCondicionEjecucion.TargetFramework, version.TargetFramework),
+            (ClavesCondicionEjecucion.SdkVersion, version.SdkVersion),
+            (ClavesCondicionEjecucion.Environment, ClavesCondicionEjecucion.EntornoObjetivo),
+            (ClavesCondicionEjecucion.IntervaloMuestreoMs, _intervaloMuestreoMs.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.OrdenGlobal, orden.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.SolicitudesEsperadas, esperadas.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.SolicitudesExitosas, exitosas.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.SolicitudesFallidas, fallidas.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.DesfaseInicioMaximoMs, desfaseMaximo.ToString("0.###", CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.DesfaseInicioPromedioMs, desfasePromedio.ToString("0.###", CultureInfo.InvariantCulture))
+        ];
+
+        return condiciones.Select(x => new CondicionEjecucion { Clave = x.Clave, Valor = x.Valor }).ToList();
+    }
+
     private async Task<EjecucionResumen> PersistirEjecucionAsync(
         ConfiguracionEvaluacion config, ParametrosCarga carga, PasoEjecucion paso, PreparedVersion version,
         int orden, string estado, DateTime inicio, long exitosas, long fallidas,
@@ -559,6 +701,18 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
             Leer(ClavesParametroEstres.DuracionNivelSegundos),
             Leer(ClavesParametroEstres.WarmUpSegundos),
             Leer(ClavesParametroEstres.IntervaloSolicitudesMs));
+    }
+
+    private static ParametrosConcurrencia LeerParametrosConcurrencia(ConfiguracionEvaluacion config)
+    {
+        int Leer(string clave) => int.Parse(
+            config.Parametros.First(p => p.Clave == clave).Valor, CultureInfo.InvariantCulture);
+
+        return new ParametrosConcurrencia(
+            Leer(ClavesParametroConcurrencia.UsuariosConcurrentes),
+            Leer(ClavesParametroConcurrencia.Rondas),
+            Leer(ClavesParametroConcurrencia.WarmUpSegundos),
+            Leer(ClavesParametroConcurrencia.IntervaloRondasMs));
     }
 
     private sealed record ParametrosCarga(int UsuariosVirtuales, int DuracionSegundos, int WarmUpSegundos, int RampUpSegundos, int IntervaloSolicitudesMs);

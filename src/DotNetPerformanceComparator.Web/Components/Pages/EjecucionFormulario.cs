@@ -39,6 +39,9 @@ public sealed class EjecucionFormulario
     public int? NivelActual { get; private set; }
     public int? TotalNiveles { get; private set; }
     public int? UsuariosNivel { get; private set; }
+    public int? RondaActual { get; private set; }
+    public int? TotalRondas { get; private set; }
+    public int? UsuariosConcurrentes { get; private set; }
     public IReadOnlyList<string> Bitacora => _bitacora;
     public IReadOnlyList<EjecucionResumen> Resultados => _resultados;
     public IReadOnlyList<NivelEstresResumen> Niveles => _niveles;
@@ -167,6 +170,21 @@ public sealed class EjecucionFormulario
             _niveles.Add(nivel);
             CpuActual = null;
             RamActual = null;
+        }
+
+        if (progreso.RondaActual is not null)
+        {
+            RondaActual = progreso.RondaActual;
+        }
+
+        if (progreso.TotalRondas is not null)
+        {
+            TotalRondas = progreso.TotalRondas;
+        }
+
+        if (progreso.UsuariosConcurrentes is not null)
+        {
+            UsuariosConcurrentes = progreso.UsuariosConcurrentes;
         }
 
         if (progreso.LogLine is not null)

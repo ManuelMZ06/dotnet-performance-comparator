@@ -34,6 +34,12 @@
                             {
                                 <text> · Nivel @n@(_formulario.TotalNiveles is { } t ? $" de {t}" : "") · @_formulario.UsuariosNivel usuarios concurrentes</text>
                             }
+                            @if (_formulario.Fase == FaseEjecucion.Concurrencia && _formulario.UsuariosConcurrentes is { } uc)
+                            {
+                                <text>
+                                    @(_formulario.RondaActual is { } ronda ? $" · Ronda {ronda}" : "")@(_formulario.TotalRondas is { } tr ? $" de {tr}" : "") · @uc usuarios concurrentes
+                                </text>
+                            }
                         </span>
                     }
                 </div>
@@ -46,7 +52,7 @@
                     </div>
                 }
 
-                @if ((_formulario.Fase == FaseEjecucion.Medicion || _formulario.Fase == FaseEjecucion.NivelEstres) && (_formulario.CpuActual is not null || _formulario.RamActual is not null))
+                @if ((_formulario.Fase == FaseEjecucion.Medicion || _formulario.Fase == FaseEjecucion.NivelEstres || _formulario.Fase == FaseEjecucion.Concurrencia) && (_formulario.CpuActual is not null || _formulario.RamActual is not null))
                 {
                     <div class="ejecucion-vivos">
                         <span>CPU: @Num(_formulario.CpuActual) %</span>
@@ -217,6 +223,7 @@
         FaseEjecucion.RampUp => "Ramp-up",
         FaseEjecucion.Medicion => "Medición",
         FaseEjecucion.NivelEstres => "Nivel de estrés",
+        FaseEjecucion.Concurrencia => "Concurrencia",
         FaseEjecucion.Finalizado => "Finalizado",
         _ => ""
     };

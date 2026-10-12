@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddSingleton<IExecutionWorkspacePreparer, ExecutionWorkspacePreparer>();
         services.AddSingleton<ITargetAppLauncher, TargetAppLauncher>();
         services.AddSingleton<ILoadRunner, NBomberLoadRunner>();
+        services.AddSingleton<IConcurrencyRunner, ConcurrencyNBomberRunner>();
 
         return services;
     }

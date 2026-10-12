@@ -265,17 +265,72 @@ public class EjecutarEvaluacionServiceTests
         return config;
     }
 
+    private sealed class FakeConcurrencyRunner : IConcurrencyRunner
+    {
+        public long Esperadas { get; set; } = 50;
+        public long Exitosas { get; set; } = 50;
+        public long Fallidas { get; set; }
+        public double MediaMs { get; set; } = 9.0;
+        public double P95Ms { get; set; } = 18.0;
+        public double Rps { get; set; } = 30.0;
+        public double SkewMax { get; set; } = 2.5;
+        public double SkewAvg { get; set; } = 1.4;
+        public bool Started { get; set; } = true;
+        public bool Timeout { get; set; }
+
+        public Task<ConcurrencyPhaseResult> RunAsync(ConcurrencyRunRequest request, CancellationToken ct = default)
+        {
+            request.OnRondaLiberada?.Invoke(1);
+            request.OnRondaCompletada?.Invoke(1, SkewMax);
+            var esperadas = (long)request.UsuariosConcurrentes * request.Rondas;
+            return Task.FromResult(new ConcurrencyPhaseResult(
+                Started, esperadas, Exitosas, Fallidas, MediaMs, P95Ms, Rps, SkewMax, SkewAvg, Timeout));
+        }
+    }
+
+    private static ConfiguracionEvaluacion ConfigConcurrencia(int numeroEjecuciones = 1, params string[] metricas)
+    {
+        metricas = metricas.Length == 0 ? SeisMetricas : metricas;
+        var config = new ConfiguracionEvaluacion
+        {
+            Id = 1, ProyectoId = 1, MigracionId = 1, TipoPruebaId = 3, Nombre = "Concurrencia base",
+            NumeroEjecuciones = numeroEjecuciones, RutaObjetivo = "/", Estado = "Configurada",
+            Proyecto = new ProyectoDotNet { Id = 1, Nombre = "App", RutaOriginal = @"C:\App\App.csproj" },
+            Migracion = new Migracion { Id = 1, RutaMigrada = @"C:\App10", Estado = "Exitosa" },
+            TipoPrueba = new TipoPrueba { Id = 3, Nombre = "Concurrencia" }
+        };
+
+        foreach (var (clave, valor) in new[]
+        {
+            (ClavesParametroConcurrencia.UsuariosConcurrentes, "10"), (ClavesParametroConcurrencia.Rondas, "5"),
+            (ClavesParametroConcurrencia.WarmUpSegundos, "0"), (ClavesParametroConcurrencia.IntervaloRondasMs, "0")
+        })
+        {
+            config.Parametros.Add(new ParametroEvaluacion { Clave = clave, Valor = valor });
+        }
+
+        var id = 10;
+        foreach (var nombre in metricas)
+        {
+            config.ConfiguracionesMetrica.Add(new ConfiguracionMetrica { MetricaId = id, Metrica = new Metrica { Id = id, Nombre = nombre, Unidad = "u" } });
+            id++;
+        }
+
+        return config;
+    }
+
     private static EjecutarEvaluacionService Crear(
         FakeRepo repo, IEvaluationExecutionGate? gate = null, IExecutionWorkspacePreparer? preparer = null,
-        ITargetAppLauncher? launcher = null, ILoadRunner? loadRunner = null)
+        ITargetAppLauncher? launcher = null, ILoadRunner? loadRunner = null, IConcurrencyRunner? concurrencyRunner = null)
     {
         var lr = loadRunner ?? new FakeLoadRunner();
         var time = new FixedTime();
         var stressRunner = new StressExecutionRunner(repo, lr, time, NullLogger<StressExecutionRunner>.Instance);
+        var concRunner = new ConcurrencyExecutionRunner(lr, concurrencyRunner ?? new FakeConcurrencyRunner());
         return new EjecutarEvaluacionService(
             repo, gate ?? new FakeGate(), preparer ?? new FakePreparer(),
             launcher ?? new FakeLauncher(() => new FakeTargetApp(true, false, true)),
-            lr, stressRunner, time, NullLogger<EjecutarEvaluacionService>.Instance, intervaloMuestreoMs: 10);
+            lr, stressRunner, concRunner, time, NullLogger<EjecutarEvaluacionService>.Instance, intervaloMuestreoMs: 10);
     }
 
     private static async Task<EjecutarEvaluacionResult> EjecutarAsync(EjecutarEvaluacionService servicio) =>
@@ -317,10 +372,14 @@ public class EjecutarEvaluacionServiceTests
     }
 
     [Fact]
-    public async Task TipoConcurrencia_EsRechazado()
+    public async Task TipoConcurrencia_EsAceptado()
     {
-        var repo = new FakeRepo { Config = Config(tipoId: 3, tipoNombre: "Concurrencia") };
-        Assert.False((await EjecutarAsync(Crear(repo))).Exito);
+        // Desde C-07.4 el motor habilita Concurrencia.
+        var repo = new FakeRepo { Config = ConfigConcurrencia() };
+        var info = await Crear(repo).ObtenerInfoAsync(1);
+        Assert.NotNull(info);
+        Assert.True(info!.PuedeEjecutar);
+        Assert.Equal("Concurrencia", info.TipoPrueba);
     }
 
     [Fact]
@@ -582,6 +641,55 @@ public class EjecutarEvaluacionServiceTests
             Assert.DoesNotContain(n.Resultados, x => x.MetricaId == repo.Config!.ConfiguracionesMetrica.Single(cm => cm.Metrica.Nombre == NombresMetrica.Latencia).MetricaId);
             Assert.DoesNotContain(n.Resultados, x => x.MetricaId == repo.Config!.ConfiguracionesMetrica.Single(cm => cm.Metrica.Nombre == NombresMetrica.Throughput).MetricaId);
         });
+    }
+
+    // ---------------------------------------------------------------- Concurrencia (C-07.4)
+
+    [Fact]
+    public async Task Concurrencia_Completada_ConSeisMetricasYDiagnostico()
+    {
+        var repo = new FakeRepo { Config = ConfigConcurrencia() };
+        var conc = new FakeConcurrencyRunner { Exitosas = 50, Fallidas = 0, P95Ms = 18.0, SkewMax = 3.1, SkewAvg = 1.7 };
+        var r = await EjecutarAsync(Crear(repo, concurrencyRunner: conc));
+
+        Assert.True(r.Exito);
+        Assert.Equal(EstadosConfiguracionEvaluacion.Finalizada, r.EstadoFinal);
+        Assert.Equal(2, repo.Ejecuciones.Count);
+        Assert.All(repo.Ejecuciones, e =>
+        {
+            Assert.Equal(EstadosEjecucion.Completada, e.Estado);
+            Assert.Equal(6, e.Resultados.Count);
+            Assert.Contains(e.Condiciones, c => c.Clave == ClavesCondicionEjecucion.SolicitudesEsperadas && c.Valor == "50");
+            Assert.Contains(e.Condiciones, c => c.Clave == ClavesCondicionEjecucion.DesfaseInicioMaximoMs);
+            Assert.Contains(e.Condiciones, c => c.Clave == ClavesCondicionEjecucion.DesfaseInicioPromedioMs);
+            Assert.DoesNotContain(e.Condiciones, c => c.Clave == NombresMetrica.Latencia); // Mean/P95/RPS no son condiciones
+        });
+    }
+
+    [Fact]
+    public async Task Concurrencia_ConteoInconsistente_EsFallida()
+    {
+        var repo = new FakeRepo { Config = ConfigConcurrencia() };
+        var conc = new FakeConcurrencyRunner { Exitosas = 40, Fallidas = 5 }; // 45 != 50 esperadas
+        var r = await EjecutarAsync(Crear(repo, concurrencyRunner: conc));
+
+        Assert.False(r.Exito);
+        Assert.Equal(EstadosConfiguracionEvaluacion.Fallida, r.EstadoFinal);
+        var ejecucion = repo.Ejecuciones.First();
+        Assert.Equal(EstadosEjecucion.Fallida, ejecucion.Estado);
+        Assert.Empty(ejecucion.Resultados);
+    }
+
+    [Fact]
+    public async Task Concurrencia_CeroExitosas_EsFallida()
+    {
+        var repo = new FakeRepo { Config = ConfigConcurrencia() };
+        var conc = new FakeConcurrencyRunner { Exitosas = 0, Fallidas = 50 };
+        var r = await EjecutarAsync(Crear(repo, concurrencyRunner: conc));
+
+        Assert.False(r.Exito);
+        Assert.Equal(EstadosEjecucion.Fallida, repo.Ejecuciones.First().Estado);
+        Assert.Empty(repo.Ejecuciones.First().Resultados);
     }
 
     [Fact]

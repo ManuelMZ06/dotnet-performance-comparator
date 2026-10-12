@@ -15,6 +15,9 @@ public static class ClavesCondicionEjecucion
     public const string IntervaloMuestreoMs = "IntervaloMuestreoMs";
     public const string OrdenGlobal = "OrdenGlobal";
     public const string NumeroNivelesPlanificados = "NumeroNivelesPlanificados";
+    public const string SolicitudesEsperadas = "SolicitudesEsperadas";
+    public const string DesfaseInicioMaximoMs = "DesfaseInicioMaximoMs";
+    public const string DesfaseInicioPromedioMs = "DesfaseInicioPromedioMs";
     public const string SolicitudesExitosas = "SolicitudesExitosas";
     public const string SolicitudesFallidas = "SolicitudesFallidas";
 

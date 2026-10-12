@@ -10,6 +10,7 @@ public enum FaseEjecucion
     RampUp,
     Medicion,
     NivelEstres,
+    Concurrencia,
     Finalizado
 }
 
@@ -75,7 +76,10 @@ public sealed record EvaluationExecutionProgress(
     int? NivelActual = null,
     int? TotalNiveles = null,
     int? UsuariosNivel = null,
-    NivelEstresResumen? NivelFinalizado = null);
+    NivelEstresResumen? NivelFinalizado = null,
+    int? RondaActual = null,
+    int? TotalRondas = null,
+    int? UsuariosConcurrentes = null);
 
 /// <summary>
 /// Persistencia requerida por CU-04: cargar la configuración completa y guardar estado/ejecuciones.
