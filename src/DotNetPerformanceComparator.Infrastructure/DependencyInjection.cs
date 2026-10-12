@@ -1,5 +1,6 @@
 using DotNetPerformanceComparator.Application.Evaluations.Configuration;
 using DotNetPerformanceComparator.Application.Evaluations.Execution;
+using DotNetPerformanceComparator.Application.Evaluations.Results;
 using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Infrastructure.Execution;
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
@@ -46,6 +47,9 @@ public static class DependencyInjection
         // CU-03
         services.AddScoped<IConfiguracionEvaluacionRepository, ConfiguracionEvaluacionRepository>();
         services.AddScoped<IEvaluationCatalogRepository, EvaluationCatalogRepository>();
+
+        // CU-05
+        services.AddScoped<IConsultaResultadosRepository, ConsultaResultadosRepository>();
 
         // CU-04 (C-07.1)
         services.AddScoped<IEvaluationExecutionRepository, EvaluationExecutionRepository>();

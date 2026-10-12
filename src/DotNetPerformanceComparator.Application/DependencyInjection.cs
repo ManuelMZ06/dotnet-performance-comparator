@@ -1,5 +1,6 @@
 using DotNetPerformanceComparator.Application.Evaluations.Configuration;
 using DotNetPerformanceComparator.Application.Evaluations.Execution;
+using DotNetPerformanceComparator.Application.Evaluations.Results;
 using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +32,9 @@ public static class DependencyInjection
         services.AddScoped<IConcurrencyExecutionRunner, ConcurrencyExecutionRunner>();
         services.AddScoped<IEjecutarEvaluacionService, EjecutarEvaluacionService>();
         services.AddScoped<IExecutionStatusQueryService, ExecutionStatusQueryService>();
+
+        // CU-05
+        services.AddScoped<IConsultaResultadosService, ConsultaResultadosService>();
 
         return services;
     }
