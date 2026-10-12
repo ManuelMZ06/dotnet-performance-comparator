@@ -54,7 +54,14 @@ public sealed class ProjectFileEditorTests : IDisposable
 
         Assert.True(resultado.Updated);
         Assert.Equal(new[] { "net10.0" }, resultado.TargetFrameworks);
-        Assert.Equal(original.Replace("<TargetFramework>net8.0</TargetFramework>", "<TargetFramework>net10.0</TargetFramework>"), File.ReadAllText(csproj));
+
+        // Se compara el contenido lógico ignorando el estilo de salto de línea: el editor normaliza los
+        // finales a LF al reescribir el XML, mientras que el esperado hereda el estilo del archivo .cs
+        // según el checkout (LF local, CRLF en un checkout limpio de Windows). Solo interesa que net8.0
+        // pase a net10.0 sin tocar lo demás.
+        static string SinEstiloDeSalto(string texto) => texto.Replace("\r\n", "\n");
+        var esperado = original.Replace("<TargetFramework>net8.0</TargetFramework>", "<TargetFramework>net10.0</TargetFramework>");
+        Assert.Equal(SinEstiloDeSalto(esperado), SinEstiloDeSalto(File.ReadAllText(csproj)));
     }
 
     [Fact]
