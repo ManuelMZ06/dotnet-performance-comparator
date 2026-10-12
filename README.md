@@ -1,5 +1,7 @@
 # DotNetPerformanceComparator
 
+[![CI](https://github.com/ManuelMZ06/dotnet-performance-comparator/actions/workflows/ci.yml/badge.svg)](https://github.com/ManuelMZ06/dotnet-performance-comparator/actions/workflows/ci.yml) 
+
 **Análisis de Rendimiento y Consumo de Recursos Computacionales Entre .NET 8 y .NET 10**
 
 Herramienta web académica (Proyecto de Graduación) que permite tomar una aplicación ASP.NET Core en **.NET 8**, crear una **migración experimental independiente a .NET 10** y ejecutar sobre ambas versiones pruebas de rendimiento equivalentes para recopilar métricas de rendimiento y de consumo de recursos.
