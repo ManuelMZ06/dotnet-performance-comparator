@@ -46,4 +46,70 @@ public sealed class EvaluationExecutionRepository : IEvaluationExecutionReposito
         context.Ejecuciones.Add(ejecucion);
         await context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<int> CrearEjecucionEnProcesoAsync(Ejecucion ejecucion, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        context.Ejecuciones.Add(ejecucion);
+        await context.SaveChangesAsync(cancellationToken);
+        return ejecucion.Id;
+    }
+
+    public async Task<int> AgregarNivelEnProcesoAsync(NivelEstres nivel, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        context.NivelesEstres.Add(nivel);
+        await context.SaveChangesAsync(cancellationToken);
+        return nivel.Id;
+    }
+
+    public async Task CompletarNivelAsync(
+        int nivelId, string estado, DateTime fechaFin, long solicitudesExitosas, long solicitudesFallidas,
+        string? detalle, IReadOnlyList<(int MetricaId, decimal Valor)> resultados, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var nivel = await context.NivelesEstres.FirstOrDefaultAsync(n => n.Id == nivelId, cancellationToken)
+            ?? throw new InvalidOperationException($"No existe el nivel de estrés {nivelId}.");
+
+        nivel.Estado = estado;
+        nivel.FechaFin = fechaFin;
+        nivel.SolicitudesExitosas = (int)solicitudesExitosas;
+        nivel.SolicitudesFallidas = (int)solicitudesFallidas;
+        nivel.Detalle = detalle;
+
+        foreach (var (metricaId, valor) in resultados)
+        {
+            context.ResultadosMetricaNivelEstres.Add(new ResultadoMetricaNivelEstres
+            {
+                NivelEstresId = nivelId, MetricaId = metricaId, Valor = valor
+            });
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task FinalizarEjecucionAsync(
+        int ejecucionId, string estado, DateTime fechaFin,
+        IReadOnlyList<(int MetricaId, decimal Valor)>? resumen, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var ejecucion = await context.Ejecuciones.FirstOrDefaultAsync(e => e.Id == ejecucionId, cancellationToken)
+            ?? throw new InvalidOperationException($"No existe la ejecución {ejecucionId}.");
+
+        ejecucion.Estado = estado;
+        ejecucion.FechaFin = fechaFin;
+
+        if (resumen is not null)
+        {
+            foreach (var (metricaId, valor) in resumen)
+            {
+                context.ResultadosMetrica.Add(new ResultadoMetrica
+                {
+                    EjecucionId = ejecucionId, MetricaId = metricaId, Valor = valor
+                });
+            }
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
 }

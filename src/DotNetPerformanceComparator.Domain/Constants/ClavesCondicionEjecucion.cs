@@ -14,6 +14,7 @@ public static class ClavesCondicionEjecucion
     public const string Environment = "Environment";
     public const string IntervaloMuestreoMs = "IntervaloMuestreoMs";
     public const string OrdenGlobal = "OrdenGlobal";
+    public const string NumeroNivelesPlanificados = "NumeroNivelesPlanificados";
     public const string SolicitudesExitosas = "SolicitudesExitosas";
     public const string SolicitudesFallidas = "SolicitudesFallidas";
 

@@ -20,6 +20,8 @@ public class AppDbContext : DbContext
     public DbSet<Ejecucion> Ejecuciones => Set<Ejecucion>();
     public DbSet<CondicionEjecucion> CondicionesEjecucion => Set<CondicionEjecucion>();
     public DbSet<ResultadoMetrica> ResultadosMetrica => Set<ResultadoMetrica>();
+    public DbSet<NivelEstres> NivelesEstres => Set<NivelEstres>();
+    public DbSet<ResultadoMetricaNivelEstres> ResultadosMetricaNivelEstres => Set<ResultadoMetricaNivelEstres>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

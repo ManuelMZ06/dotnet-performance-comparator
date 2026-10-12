@@ -7,26 +7,31 @@ using Microsoft.Extensions.Logging;
 namespace DotNetPerformanceComparator.Application.Evaluations.Execution;
 
 /// <summary>
-/// CU-04 (C-07.1): orquesta la ejecución experimental de una configuración de tipo Carga, alternando
-/// .NET 8 y .NET 10 de forma secuencial, y persiste Ejecucion/CondicionEjecucion/ResultadoMetrica.
-/// La generación de carga, los procesos y el muestreo de recursos viven en Infrastructure.
+/// CU-04: coordinador general de la ejecución experimental. Valida y prepara la configuración, alterna
+/// .NET 8 y .NET 10 de forma secuencial y persiste el resultado. La ejecución de cada paso se delega según
+/// el tipo de prueba: Carga (C-07.1/C-07.2) en este servicio; Estrés escalonado (C-07.3) en
+/// <see cref="IStressExecutionRunner"/>. La generación de carga, los procesos y el muestreo viven en Infrastructure.
 /// </summary>
 public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
 {
     public const int IntervaloMuestreoMs = 1000;
 
-    /// <summary>Métricas soportadas por el motor de Carga desde C-07.2 (las seis del catálogo).</summary>
+    /// <summary>Métricas soportadas por el motor desde C-07.2 (las seis del catálogo).</summary>
     public static IReadOnlyList<string> MetricasSoportadas { get; } =
     [
         NombresMetrica.Cpu, NombresMetrica.MemoriaRam, NombresMetrica.TiempoRespuesta,
         NombresMetrica.Latencia, NombresMetrica.Throughput, NombresMetrica.TamanoAplicacion
     ];
 
+    /// <summary>Tipos de prueba habilitados en el motor (C-07.3: Carga y Estrés; Concurrencia pendiente).</summary>
+    public static IReadOnlyList<string> TiposSoportados { get; } = [TiposPruebaConocidos.Carga, TiposPruebaConocidos.Estres];
+
     private readonly IEvaluationExecutionRepository _repo;
     private readonly IEvaluationExecutionGate _gate;
     private readonly IExecutionWorkspacePreparer _preparer;
     private readonly ITargetAppLauncher _launcher;
     private readonly ILoadRunner _loadRunner;
+    private readonly IStressExecutionRunner _stressRunner;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<EjecutarEvaluacionService> _logger;
     private readonly int _intervaloMuestreoMs;
@@ -37,6 +42,7 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         IExecutionWorkspacePreparer preparer,
         ITargetAppLauncher launcher,
         ILoadRunner loadRunner,
+        IStressExecutionRunner stressRunner,
         TimeProvider timeProvider,
         ILogger<EjecutarEvaluacionService> logger,
         int intervaloMuestreoMs = IntervaloMuestreoMs)
@@ -46,6 +52,7 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         _preparer = preparer;
         _launcher = launcher;
         _loadRunner = loadRunner;
+        _stressRunner = stressRunner;
         _timeProvider = timeProvider;
         _logger = logger;
         _intervaloMuestreoMs = intervaloMuestreoMs;
@@ -92,9 +99,7 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
                 return new EjecutarEvaluacionResult(false, motivo!, config.Estado);
             }
 
-            var carga = LeerParametrosCarga(config);
-
-            return await EjecutarInternoAsync(config, metricas, carga, progress, cancellationToken);
+            return await EjecutarInternoAsync(config, metricas, progress, cancellationToken);
         }
         finally
         {
@@ -105,10 +110,13 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
     private async Task<EjecutarEvaluacionResult> EjecutarInternoAsync(
         ConfiguracionEvaluacion config,
         IReadOnlyList<Metrica> metricas,
-        ParametrosCarga carga,
         IProgress<EvaluationExecutionProgress>? progress,
         CancellationToken cancellationToken)
     {
+        var esEstres = config.TipoPrueba.Nombre == TiposPruebaConocidos.Estres;
+        var carga = esEstres ? null : LeerParametrosCarga(config);
+        var estres = esEstres ? LeerParametrosEstres(config) : null;
+
         void Log(string linea) => progress?.Report(new EvaluationExecutionProgress(config.Estado, LogLine: linea));
 
         Reportar(progress, config.Estado, FaseEjecucion.Preparacion, linea: "Preparando el entorno de evaluación...");
@@ -138,7 +146,9 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
                 orden++;
                 var version = paso.VersionDotNet == VersionesDotNet.Net8 ? workspace.Net8 : workspace.Net10;
 
-                var (completada, mensaje) = await EjecutarPasoAsync(config, metricas, carga, paso, version, orden, secuencia.Count, progress, cancellationToken);
+                var (completada, mensaje) = esEstres
+                    ? await EjecutarPasoEstresAsync(config, metricas, estres!, paso, version, orden, secuencia.Count, progress, cancellationToken)
+                    : await EjecutarPasoCargaAsync(config, metricas, carga!, paso, version, orden, secuencia.Count, progress, cancellationToken);
                 if (!completada)
                 {
                     return await FinalizarConfiguracionAsync(config, EstadosConfiguracionEvaluacion.Fallida, progress,
@@ -169,7 +179,7 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         }
     }
 
-    private async Task<(bool Completada, string Mensaje)> EjecutarPasoAsync(
+    private async Task<(bool Completada, string Mensaje)> EjecutarPasoCargaAsync(
         ConfiguracionEvaluacion config,
         IReadOnlyList<Metrica> metricas,
         ParametrosCarga carga,
@@ -223,7 +233,10 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
             Fase(FaseEjecucion.Medicion, $"Midiendo durante {carga.DuracionSegundos} s...");
             var muestras = new List<ResourceSample>();
             using var muestreoCts = new CancellationTokenSource();
-            var muestreo = MuestrearAsync(app, muestras, progress, version, paso, orden, totalPasos, muestreoCts.Token);
+            var muestreo = ResourceSampler.RunAsync(app, muestras, _intervaloMuestreoMs, Environment.ProcessorCount,
+                parcial => progress?.Report(new EvaluationExecutionProgress(EstadosConfiguracionEvaluacion.EnEjecucion, FaseEjecucion.Medicion,
+                    version.VersionDotNet, paso.NumeroEjecucion, orden, totalPasos, CpuActual: parcial.CpuPorcentaje, RamActual: parcial.MemoriaMb)),
+                muestreoCts.Token);
 
             LoadPhaseResult load;
             try
@@ -282,33 +295,124 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
         }
     }
 
-    private async Task MuestrearAsync(
-        ITargetApp app, List<ResourceSample> muestras, IProgress<EvaluationExecutionProgress>? progress,
-        PreparedVersion version, PasoEjecucion paso, int orden, int totalPasos, CancellationToken token)
+    // ----------------------------------------------------------------- Estrés (C-07.3)
+
+    private async Task<(bool Completada, string Mensaje)> EjecutarPasoEstresAsync(
+        ConfiguracionEvaluacion config,
+        IReadOnlyList<Metrica> metricas,
+        ParametrosEstres estres,
+        PasoEjecucion paso,
+        PreparedVersion version,
+        int orden,
+        int totalPasos,
+        IProgress<EvaluationExecutionProgress>? progress,
+        CancellationToken cancellationToken)
     {
+        var inicio = _timeProvider.GetUtcNow().UtcDateTime;
+        var niveles = StressLevelPlan.Generar(estres.UsuariosIniciales, estres.IncrementoUsuarios, estres.UsuariosMaximos);
+        ITargetApp? app = null;
         try
         {
-            while (!token.IsCancellationRequested)
-            {
-                var muestra = app.Sample();
-                if (muestra is not null)
-                {
-                    muestras.Add(muestra);
-                    if (muestras.Count >= 2)
-                    {
-                        var parcial = ResourceAggregator.Aggregate(muestras.TakeLast(2).ToList(), Environment.ProcessorCount);
-                        progress?.Report(new EvaluationExecutionProgress(EstadosConfiguracionEvaluacion.EnEjecucion, FaseEjecucion.Medicion,
-                            version.VersionDotNet, paso.NumeroEjecucion, orden, totalPasos, CpuActual: parcial.CpuPorcentaje, RamActual: parcial.MemoriaMb));
-                    }
-                }
+            progress?.Report(new EvaluationExecutionProgress(EstadosConfiguracionEvaluacion.EnEjecucion, FaseEjecucion.Readiness,
+                version.VersionDotNet, paso.NumeroEjecucion, orden, totalPasos,
+                $"[{version.VersionDotNet} · repetición {paso.NumeroEjecucion}] Iniciando aplicación objetivo..."));
+            app = await _launcher.StartAsync(version, cancellationToken);
 
-                await Task.Delay(_intervaloMuestreoMs, token);
+            if (!await app.WaitUntilReadyAsync(config.RutaObjetivo, cancellationToken) || app.HasExited)
+            {
+                // Nunca llegó a readiness: fallo técnico de la Ejecucion (igual que en Carga) → detener evaluación.
+                await _repo.AgregarEjecucionAsync(new Ejecucion
+                {
+                    ConfiguracionId = config.Id, VersionDotNet = version.VersionDotNet, NumeroEjecucion = paso.NumeroEjecucion,
+                    FechaInicio = inicio, FechaFin = _timeProvider.GetUtcNow().UtcDateTime, Estado = EstadosEjecucion.Fallida,
+                    Condiciones = ConstruirCondicionesEstres(config, estres, version, orden, niveles.Count)
+                }, CancellationToken.None);
+                return (false, $"La aplicación {version.VersionDotNet} no respondió en {config.RutaObjetivo}.");
             }
+
+            var ejecucionId = await _repo.CrearEjecucionEnProcesoAsync(new Ejecucion
+            {
+                ConfiguracionId = config.Id, VersionDotNet = version.VersionDotNet, NumeroEjecucion = paso.NumeroEjecucion,
+                FechaInicio = inicio, Estado = EstadosEjecucion.EnProceso,
+                Condiciones = ConstruirCondicionesEstres(config, estres, version, orden, niveles.Count)
+            }, CancellationToken.None);
+
+            var contexto = new StressExecutionContext(
+                ejecucionId, config.RutaObjetivo, app, version, paso, orden, totalPasos, metricas, estres, _intervaloMuestreoMs);
+
+            StressExecutionOutcome outcome;
+            try
+            {
+                outcome = await _stressRunner.EjecutarNivelesAsync(contexto, progress, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                await _repo.FinalizarEjecucionAsync(ejecucionId, EstadosEjecucion.Cancelada, _timeProvider.GetUtcNow().UtcDateTime, null, CancellationToken.None);
+                throw;
+            }
+
+            await _repo.FinalizarEjecucionAsync(ejecucionId, outcome.EstadoEjecucion, _timeProvider.GetUtcNow().UtcDateTime, outcome.ResumenResultados, CancellationToken.None);
+
+            var resumen = ConstruirResumenEstres(config, version, paso, orden, outcome);
+            progress?.Report(new EvaluationExecutionProgress(EstadosConfiguracionEvaluacion.EnEjecucion, FaseEjecucion.NivelEstres,
+                version.VersionDotNet, paso.NumeroEjecucion, orden, totalPasos, $"[{version.VersionDotNet} · repetición {paso.NumeroEjecucion}] {outcome.Mensaje}",
+                EjecucionFinalizada: resumen));
+
+            // Saturación NO detiene la evaluación; solo un fallo técnico lo hace.
+            return (!outcome.EsFalloTecnico, outcome.Mensaje);
         }
         catch (OperationCanceledException)
         {
-            // Fin normal del muestreo.
+            throw;
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error en la ejecución de estrés {Version} #{Numero} de la configuración {ConfiguracionId}.", version.VersionDotNet, paso.NumeroEjecucion, config.Id);
+            return (false, $"Error inesperado al ejecutar {version.VersionDotNet}.");
+        }
+        finally
+        {
+            if (app is not null)
+            {
+                await app.DisposeAsync();
+            }
+        }
+    }
+
+    private EjecucionResumen ConstruirResumenEstres(
+        ConfiguracionEvaluacion config, PreparedVersion version, PasoEjecucion paso, int orden, StressExecutionOutcome outcome)
+    {
+        decimal? ValorDe(string nombre) => outcome.ResumenResultados is null ? null : BuscarValor(config, nombre, outcome.ResumenResultados);
+        return new EjecucionResumen(version.VersionDotNet, paso.NumeroEjecucion, orden, outcome.EstadoEjecucion,
+            ValorDe(NombresMetrica.Cpu), ValorDe(NombresMetrica.MemoriaRam), ValorDe(NombresMetrica.TiempoRespuesta),
+            ValorDe(NombresMetrica.Latencia), ValorDe(NombresMetrica.Throughput), ValorDe(NombresMetrica.TamanoAplicacion),
+            0, 0);
+    }
+
+    private List<CondicionEjecucion> ConstruirCondicionesEstres(
+        ConfiguracionEvaluacion config, ParametrosEstres estres, PreparedVersion version, int orden, int nivelesPlanificados)
+    {
+        (string Clave, string Valor)[] condiciones =
+        [
+            (ClavesCondicionEjecucion.TipoPrueba, config.TipoPrueba.Nombre),
+            (ClavesCondicionEjecucion.MetodoHttp, ConfigurarEvaluacionService.MetodoHttp),
+            (ClavesCondicionEjecucion.RutaObjetivo, config.RutaObjetivo),
+            (ClavesParametroEstres.UsuariosIniciales, estres.UsuariosIniciales.ToString(CultureInfo.InvariantCulture)),
+            (ClavesParametroEstres.IncrementoUsuarios, estres.IncrementoUsuarios.ToString(CultureInfo.InvariantCulture)),
+            (ClavesParametroEstres.UsuariosMaximos, estres.UsuariosMaximos.ToString(CultureInfo.InvariantCulture)),
+            (ClavesParametroEstres.DuracionNivelSegundos, estres.DuracionNivelSegundos.ToString(CultureInfo.InvariantCulture)),
+            (ClavesParametroEstres.WarmUpSegundos, estres.WarmUpSegundos.ToString(CultureInfo.InvariantCulture)),
+            (ClavesParametroEstres.IntervaloSolicitudesMs, estres.IntervaloSolicitudesMs.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.ConfiguracionCompilacion, "Release"),
+            (ClavesCondicionEjecucion.TargetFramework, version.TargetFramework),
+            (ClavesCondicionEjecucion.SdkVersion, version.SdkVersion),
+            (ClavesCondicionEjecucion.Environment, ClavesCondicionEjecucion.EntornoObjetivo),
+            (ClavesCondicionEjecucion.IntervaloMuestreoMs, _intervaloMuestreoMs.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.OrdenGlobal, orden.ToString(CultureInfo.InvariantCulture)),
+            (ClavesCondicionEjecucion.NumeroNivelesPlanificados, nivelesPlanificados.ToString(CultureInfo.InvariantCulture))
+        ];
+
+        return condiciones.Select(c => new CondicionEjecucion { Clave = c.Clave, Valor = c.Valor }).ToList();
     }
 
     private async Task<EjecucionResumen> PersistirEjecucionAsync(
@@ -416,7 +520,7 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
             return (false, "La configuración ya fue ejecutada. Cree otra configuración para volver a evaluar.");
         }
 
-        if (config.TipoPrueba.Nombre != TiposPruebaConocidos.Carga)
+        if (!TiposSoportados.Contains(config.TipoPrueba.Nombre))
         {
             return (false, "Este tipo de prueba todavía no está habilitado en el motor de ejecución.");
         }
@@ -441,6 +545,20 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
             Leer(ClavesParametroCarga.WarmUpSegundos),
             Leer(ClavesParametroCarga.RampUpSegundos),
             Leer(ClavesParametroCarga.IntervaloSolicitudesMs));
+    }
+
+    private static ParametrosEstres LeerParametrosEstres(ConfiguracionEvaluacion config)
+    {
+        int Leer(string clave) => int.Parse(
+            config.Parametros.First(p => p.Clave == clave).Valor, CultureInfo.InvariantCulture);
+
+        return new ParametrosEstres(
+            Leer(ClavesParametroEstres.UsuariosIniciales),
+            Leer(ClavesParametroEstres.IncrementoUsuarios),
+            Leer(ClavesParametroEstres.UsuariosMaximos),
+            Leer(ClavesParametroEstres.DuracionNivelSegundos),
+            Leer(ClavesParametroEstres.WarmUpSegundos),
+            Leer(ClavesParametroEstres.IntervaloSolicitudesMs));
     }
 
     private sealed record ParametrosCarga(int UsuariosVirtuales, int DuracionSegundos, int WarmUpSegundos, int RampUpSegundos, int IntervaloSolicitudesMs);

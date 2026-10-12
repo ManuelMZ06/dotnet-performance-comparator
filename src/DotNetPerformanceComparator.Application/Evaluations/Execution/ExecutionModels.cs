@@ -9,6 +9,7 @@ public enum FaseEjecucion
     WarmUp,
     RampUp,
     Medicion,
+    NivelEstres,
     Finalizado
 }
 
@@ -44,6 +45,21 @@ public sealed record EjecucionResumen(
     long SolicitudesExitosas,
     long SolicitudesFallidas);
 
+/// <summary>Resumen de un <c>NivelEstres</c> finalizado, para la tabla de niveles de M-05 (C-07.3).</summary>
+public sealed record NivelEstresResumen(
+    string VersionDotNet,
+    int NumeroEjecucion,
+    int NumeroNivel,
+    int UsuariosObjetivo,
+    string Estado,
+    decimal? Cpu,
+    decimal? RamMb,
+    decimal? TiempoRespuestaMs,
+    decimal? LatenciaP95Ms,
+    decimal? ThroughputRps,
+    long SolicitudesExitosas,
+    long SolicitudesFallidas);
+
 /// <summary>Actualización de progreso del motor (como máximo ~1/seg para CPU/RAM).</summary>
 public sealed record EvaluationExecutionProgress(
     string ConfiguracionEstado,
@@ -55,7 +71,11 @@ public sealed record EvaluationExecutionProgress(
     string? LogLine = null,
     decimal? CpuActual = null,
     decimal? RamActual = null,
-    EjecucionResumen? EjecucionFinalizada = null);
+    EjecucionResumen? EjecucionFinalizada = null,
+    int? NivelActual = null,
+    int? TotalNiveles = null,
+    int? UsuariosNivel = null,
+    NivelEstresResumen? NivelFinalizado = null);
 
 /// <summary>
 /// Persistencia requerida por CU-04: cargar la configuración completa y guardar estado/ejecuciones.
@@ -69,8 +89,33 @@ public interface IEvaluationExecutionRepository
 
     Task ActualizarEstadoConfiguracionAsync(int configuracionId, string estado, CancellationToken cancellationToken = default);
 
-    /// <summary>Inserta una <c>Ejecucion</c> con sus condiciones y resultados en un único SaveChanges.</summary>
+    /// <summary>Inserta una <c>Ejecucion</c> con sus condiciones y resultados en un único SaveChanges (Carga).</summary>
     Task AgregarEjecucionAsync(Ejecucion ejecucion, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Crea una <c>Ejecucion</c> en estado inicial (con sus condiciones, sin resultados) y devuelve su Id.
+    /// Usada por Estrés para persistir niveles incrementalmente bajo una ejecución ya existente (C-07.3).
+    /// </summary>
+    Task<int> CrearEjecucionEnProcesoAsync(Ejecucion ejecucion, CancellationToken cancellationToken = default);
+
+    /// <summary>Crea un <c>NivelEstres</c> en estado inicial y devuelve su Id.</summary>
+    Task<int> AgregarNivelEnProcesoAsync(NivelEstres nivel, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finaliza un nivel: actualiza estado/fechaFin/solicitudes/detalle e inserta sus resultados por métrica
+    /// (<c>ResultadoMetricaNivelEstres</c>) en un único SaveChanges.
+    /// </summary>
+    Task CompletarNivelAsync(
+        int nivelId, string estado, DateTime fechaFin, long solicitudesExitosas, long solicitudesFallidas,
+        string? detalle, IReadOnlyList<(int MetricaId, decimal Valor)> resultados, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finaliza una <c>Ejecucion</c>: actualiza estado/fechaFin y, si se proporciona, inserta el
+    /// <c>ResultadoMetrica</c> de resumen (solo cuando la ejecución alcanzó el nivel máximo).
+    /// </summary>
+    Task FinalizarEjecucionAsync(
+        int ejecucionId, string estado, DateTime fechaFin,
+        IReadOnlyList<(int MetricaId, decimal Valor)>? resumen, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

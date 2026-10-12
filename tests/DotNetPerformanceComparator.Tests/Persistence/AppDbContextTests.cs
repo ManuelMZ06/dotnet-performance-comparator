@@ -62,7 +62,9 @@ public class AppDbContextTests : IDisposable
 
         var entidades = context.Model.GetEntityTypes().Select(e => e.ClrType.Name).ToList();
 
-        Assert.Equal(10, entidades.Count);
+        Assert.Equal(12, entidades.Count); // +NivelEstres y +ResultadoMetricaNivelEstres (C-07.3)
+        Assert.Contains("NivelEstres", entidades);
+        Assert.Contains("ResultadoMetricaNivelEstres", entidades);
         Assert.DoesNotContain("ConfiguracionPrueba", entidades);
         Assert.DoesNotContain("Comparacion", entidades);
         Assert.DoesNotContain("Reporte", entidades);

@@ -16,6 +16,7 @@ public sealed class EjecucionFormulario
     private readonly Func<Action, Task> _despachar;
     private readonly List<string> _bitacora = [];
     private readonly List<EjecucionResumen> _resultados = [];
+    private readonly List<NivelEstresResumen> _niveles = [];
 
     public EjecucionFormulario(IEjecutarEvaluacionService servicio, ILogger logger, Func<Action, Task> despachar)
     {
@@ -35,8 +36,12 @@ public sealed class EjecucionFormulario
     public int TotalPasos { get; private set; }
     public decimal? CpuActual { get; private set; }
     public decimal? RamActual { get; private set; }
+    public int? NivelActual { get; private set; }
+    public int? TotalNiveles { get; private set; }
+    public int? UsuariosNivel { get; private set; }
     public IReadOnlyList<string> Bitacora => _bitacora;
     public IReadOnlyList<EjecucionResumen> Resultados => _resultados;
+    public IReadOnlyList<NivelEstresResumen> Niveles => _niveles;
     public string? Mensaje { get; private set; }
     public OperationMessageKind MensajeTipo { get; private set; }
 
@@ -77,6 +82,7 @@ public sealed class EjecucionFormulario
         Mensaje = null;
         _bitacora.Clear();
         _resultados.Clear();
+        _niveles.Clear();
         OrdenGlobal = 0;
         TotalPasos = 0;
 
@@ -139,6 +145,28 @@ public sealed class EjecucionFormulario
         if (progreso.RamActual is not null)
         {
             RamActual = progreso.RamActual;
+        }
+
+        if (progreso.NivelActual is not null)
+        {
+            NivelActual = progreso.NivelActual;
+        }
+
+        if (progreso.TotalNiveles is not null)
+        {
+            TotalNiveles = progreso.TotalNiveles;
+        }
+
+        if (progreso.UsuariosNivel is not null)
+        {
+            UsuariosNivel = progreso.UsuariosNivel;
+        }
+
+        if (progreso.NivelFinalizado is { } nivel)
+        {
+            _niveles.Add(nivel);
+            CpuActual = null;
+            RamActual = null;
         }
 
         if (progreso.LogLine is not null)

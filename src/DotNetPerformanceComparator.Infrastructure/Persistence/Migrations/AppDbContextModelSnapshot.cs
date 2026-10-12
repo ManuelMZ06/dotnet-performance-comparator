@@ -249,6 +249,48 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.ToTable("Migracion", (string)null);
                 });
 
+            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.NivelEstres", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Detalle")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EjecucionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FechaFin")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("FechaInicio")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NumeroNivel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SolicitudesExitosas")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SolicitudesFallidas")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UsuariosObjetivo")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EjecucionId", "NumeroNivel")
+                        .IsUnique();
+
+                    b.ToTable("NivelEstres", (string)null);
+                });
+
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ParametroEvaluacion", b =>
                 {
                     b.Property<int>("Id")
@@ -326,6 +368,31 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("ResultadoMetrica", (string)null);
+                });
+
+            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ResultadoMetricaNivelEstres", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MetricaId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("NivelEstresId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Valor")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MetricaId");
+
+                    b.HasIndex("NivelEstresId", "MetricaId")
+                        .IsUnique();
+
+                    b.ToTable("ResultadoMetricaNivelEstres", (string)null);
                 });
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.TipoPrueba", b =>
@@ -448,6 +515,17 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.Navigation("Proyecto");
                 });
 
+            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.NivelEstres", b =>
+                {
+                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.Ejecucion", "Ejecucion")
+                        .WithMany("Niveles")
+                        .HasForeignKey("EjecucionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Ejecucion");
+                });
+
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ParametroEvaluacion", b =>
                 {
                     b.HasOne("DotNetPerformanceComparator.Domain.Entities.ConfiguracionEvaluacion", "Configuracion")
@@ -478,6 +556,25 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.Navigation("Metrica");
                 });
 
+            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ResultadoMetricaNivelEstres", b =>
+                {
+                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.Metrica", "Metrica")
+                        .WithMany("ResultadosNivel")
+                        .HasForeignKey("MetricaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DotNetPerformanceComparator.Domain.Entities.NivelEstres", "NivelEstres")
+                        .WithMany("Resultados")
+                        .HasForeignKey("NivelEstresId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Metrica");
+
+                    b.Navigation("NivelEstres");
+                });
+
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ConfiguracionEvaluacion", b =>
                 {
                     b.Navigation("ConfiguracionesMetrica");
@@ -491,6 +588,8 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Condiciones");
 
+                    b.Navigation("Niveles");
+
                     b.Navigation("Resultados");
                 });
 
@@ -499,11 +598,18 @@ namespace DotNetPerformanceComparator.Infrastructure.Persistence.Migrations
                     b.Navigation("ConfiguracionesMetrica");
 
                     b.Navigation("Resultados");
+
+                    b.Navigation("ResultadosNivel");
                 });
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.Migracion", b =>
                 {
                     b.Navigation("ConfiguracionesEvaluacion");
+                });
+
+            modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.NivelEstres", b =>
+                {
+                    b.Navigation("Resultados");
                 });
 
             modelBuilder.Entity("DotNetPerformanceComparator.Domain.Entities.ProyectoDotNet", b =>

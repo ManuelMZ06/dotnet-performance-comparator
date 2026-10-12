@@ -22,7 +22,10 @@ public class EjecutarEvaluacionServiceTests
     {
         public ConfiguracionEvaluacion? Config { get; init; }
         public List<Ejecucion> Ejecuciones { get; } = [];
+        public List<NivelEstres> Niveles { get; } = [];
         public List<string> Estados { get; } = [];
+        private int _ejecId;
+        private int _nivelId;
 
         public Task<ConfiguracionEvaluacion?> GetConfiguracionAsync(int id, CancellationToken ct = default) =>
             Task.FromResult(Config);
@@ -36,7 +39,54 @@ public class EjecutarEvaluacionServiceTests
 
         public Task AgregarEjecucionAsync(Ejecucion ejecucion, CancellationToken ct = default)
         {
+            ejecucion.Id = ++_ejecId;
             Ejecuciones.Add(ejecucion);
+            return Task.CompletedTask;
+        }
+
+        public Task<int> CrearEjecucionEnProcesoAsync(Ejecucion ejecucion, CancellationToken ct = default)
+        {
+            ejecucion.Id = ++_ejecId;
+            Ejecuciones.Add(ejecucion);
+            return Task.FromResult(ejecucion.Id);
+        }
+
+        public Task<int> AgregarNivelEnProcesoAsync(NivelEstres nivel, CancellationToken ct = default)
+        {
+            nivel.Id = ++_nivelId;
+            Niveles.Add(nivel);
+            return Task.FromResult(nivel.Id);
+        }
+
+        public Task CompletarNivelAsync(int nivelId, string estado, DateTime fechaFin, long exitosas, long fallidas,
+            string? detalle, IReadOnlyList<(int MetricaId, decimal Valor)> resultados, CancellationToken ct = default)
+        {
+            var nivel = Niveles.First(n => n.Id == nivelId);
+            nivel.Estado = estado;
+            nivel.FechaFin = fechaFin;
+            nivel.SolicitudesExitosas = (int)exitosas;
+            nivel.SolicitudesFallidas = (int)fallidas;
+            nivel.Detalle = detalle;
+            foreach (var (metricaId, valor) in resultados)
+            {
+                nivel.Resultados.Add(new ResultadoMetricaNivelEstres { NivelEstresId = nivelId, MetricaId = metricaId, Valor = valor });
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task FinalizarEjecucionAsync(int ejecucionId, string estado, DateTime fechaFin,
+            IReadOnlyList<(int MetricaId, decimal Valor)>? resumen, CancellationToken ct = default)
+        {
+            var ejecucion = Ejecuciones.First(e => e.Id == ejecucionId);
+            ejecucion.Estado = estado;
+            ejecucion.FechaFin = fechaFin;
+            if (resumen is not null)
+            {
+                foreach (var (metricaId, valor) in resumen)
+                {
+                    ejecucion.Resultados.Add(new ResultadoMetrica { EjecucionId = ejecucionId, MetricaId = metricaId, Valor = valor });
+                }
+            }
             return Task.CompletedTask;
         }
     }
@@ -183,11 +233,50 @@ public class EjecutarEvaluacionServiceTests
         return config;
     }
 
+    private static ConfiguracionEvaluacion ConfigEstres(int numeroEjecuciones = 1, params string[] metricas)
+    {
+        metricas = metricas.Length == 0 ? SeisMetricas : metricas;
+        var config = new ConfiguracionEvaluacion
+        {
+            Id = 1, ProyectoId = 1, MigracionId = 1, TipoPruebaId = EstresId, Nombre = "Estrés base",
+            NumeroEjecuciones = numeroEjecuciones, RutaObjetivo = "/", Estado = "Configurada",
+            Proyecto = new ProyectoDotNet { Id = 1, Nombre = "App", RutaOriginal = @"C:\App\App.csproj" },
+            Migracion = new Migracion { Id = 1, RutaMigrada = @"C:\App10", Estado = "Exitosa" },
+            TipoPrueba = new TipoPrueba { Id = EstresId, Nombre = "Estrés" }
+        };
+
+        foreach (var (clave, valor) in new[]
+        {
+            (ClavesParametroEstres.UsuariosIniciales, "5"), (ClavesParametroEstres.IncrementoUsuarios, "5"),
+            (ClavesParametroEstres.UsuariosMaximos, "15"), (ClavesParametroEstres.DuracionNivelSegundos, "15"),
+            (ClavesParametroEstres.WarmUpSegundos, "0"), (ClavesParametroEstres.IntervaloSolicitudesMs, "0")
+        })
+        {
+            config.Parametros.Add(new ParametroEvaluacion { Clave = clave, Valor = valor });
+        }
+
+        var id = 10;
+        foreach (var nombre in metricas)
+        {
+            config.ConfiguracionesMetrica.Add(new ConfiguracionMetrica { MetricaId = id, Metrica = new Metrica { Id = id, Nombre = nombre, Unidad = "u" } });
+            id++;
+        }
+
+        return config;
+    }
+
     private static EjecutarEvaluacionService Crear(
         FakeRepo repo, IEvaluationExecutionGate? gate = null, IExecutionWorkspacePreparer? preparer = null,
-        ITargetAppLauncher? launcher = null, ILoadRunner? loadRunner = null) =>
-        new(repo, gate ?? new FakeGate(), preparer ?? new FakePreparer(), launcher ?? new FakeLauncher(() => new FakeTargetApp(true, false, true)),
-            loadRunner ?? new FakeLoadRunner(), new FixedTime(), NullLogger<EjecutarEvaluacionService>.Instance, intervaloMuestreoMs: 10);
+        ITargetAppLauncher? launcher = null, ILoadRunner? loadRunner = null)
+    {
+        var lr = loadRunner ?? new FakeLoadRunner();
+        var time = new FixedTime();
+        var stressRunner = new StressExecutionRunner(repo, lr, time, NullLogger<StressExecutionRunner>.Instance);
+        return new EjecutarEvaluacionService(
+            repo, gate ?? new FakeGate(), preparer ?? new FakePreparer(),
+            launcher ?? new FakeLauncher(() => new FakeTargetApp(true, false, true)),
+            lr, stressRunner, time, NullLogger<EjecutarEvaluacionService>.Instance, intervaloMuestreoMs: 10);
+    }
 
     private static async Task<EjecutarEvaluacionResult> EjecutarAsync(EjecutarEvaluacionService servicio) =>
         await servicio.EjecutarAsync(new EjecutarEvaluacionRequest(1));
@@ -217,12 +306,14 @@ public class EjecutarEvaluacionServiceTests
     }
 
     [Fact]
-    public async Task TipoEstres_EsRechazado()
+    public async Task TipoEstres_EsAceptado()
     {
-        var repo = new FakeRepo { Config = Config(tipoId: EstresId, tipoNombre: "Estrés") };
-        var r = await EjecutarAsync(Crear(repo));
-        Assert.False(r.Exito);
-        Assert.Contains("no está habilitado", r.Mensaje);
+        // Desde C-07.3 el motor habilita Estrés.
+        var repo = new FakeRepo { Config = ConfigEstres() };
+        var info = await Crear(repo).ObtenerInfoAsync(1);
+        Assert.NotNull(info);
+        Assert.True(info!.PuedeEjecutar);
+        Assert.Equal("Estrés", info.TipoPrueba);
     }
 
     [Fact]
@@ -439,6 +530,58 @@ public class EjecutarEvaluacionServiceTests
         Assert.NotNull(info);
         Assert.True(info!.PuedeEjecutar);
         Assert.Equal("Carga", info.TipoPrueba);
+    }
+
+    // ---------------------------------------------------------------- Estrés (C-07.3)
+
+    [Fact]
+    public async Task Estres_AlcanzaMaximo_FinalizaConResumenDelUltimoNivel()
+    {
+        var repo = new FakeRepo { Config = ConfigEstres() };
+        var load = new FakeLoadRunner { Exitosas = 200, Fallidas = 0, MediaMs = 8.0, P95Ms = 20.0, Rps = 95.0, StableDelayMs = 60 };
+        var r = await EjecutarAsync(Crear(repo, loadRunner: load));
+
+        Assert.True(r.Exito);
+        Assert.Equal(EstadosConfiguracionEvaluacion.Finalizada, r.EstadoFinal);
+        Assert.Equal(2, repo.Ejecuciones.Count); // .NET 8 y .NET 10
+        Assert.All(repo.Ejecuciones, e => Assert.Equal(EstadosEjecucion.Completada, e.Estado));
+
+        Assert.Equal(6, repo.Niveles.Count); // 3 niveles × 2 versiones
+        Assert.All(repo.Niveles, n =>
+        {
+            Assert.Equal(EstadosNivelEstres.Completado, n.Estado);
+            Assert.Equal(5, n.Resultados.Count); // CPU, RAM, Mean, P95, RPS (sin Tamaño)
+        });
+        Assert.Equal(new[] { 5, 10, 15 }, repo.Niveles.Select(n => n.UsuariosObjetivo).Distinct().OrderBy(u => u).ToArray());
+
+        // Resumen de cada Ejecucion = 6 métricas (incluye Tamaño).
+        Assert.All(repo.Ejecuciones, e => Assert.Equal(6, e.Resultados.Count));
+        var latenciaId = repo.Config!.ConfiguracionesMetrica.Single(cm => cm.Metrica.Nombre == NombresMetrica.Latencia).MetricaId;
+        Assert.All(repo.Ejecuciones, e => Assert.Equal(20.0m, e.Resultados.Single(x => x.MetricaId == latenciaId).Valor)); // P95 del nivel máximo
+    }
+
+    [Fact]
+    public async Task Estres_Saturacion_ContinuaYConfiguracionFinalizada()
+    {
+        var repo = new FakeRepo { Config = ConfigEstres() };
+        var load = new FakeLoadRunner { Exitosas = 0, Fallidas = 80, StableDelayMs = 60 };
+        var r = await EjecutarAsync(Crear(repo, loadRunner: load));
+
+        Assert.True(r.Exito); // saturación no es fallo técnico
+        Assert.Equal(EstadosConfiguracionEvaluacion.Finalizada, r.EstadoFinal);
+        Assert.Equal(2, repo.Ejecuciones.Count);
+        Assert.All(repo.Ejecuciones, e => Assert.Equal(EstadosEjecucion.CompletadaConSaturacion, e.Estado));
+        Assert.All(repo.Ejecuciones, e => Assert.Empty(e.Resultados)); // sin resumen
+
+        Assert.Equal(2, repo.Niveles.Count); // se satura en el primer nivel de cada versión → no niveles superiores
+        Assert.All(repo.Niveles, n =>
+        {
+            Assert.Equal(EstadosNivelEstres.Saturado, n.Estado);
+            Assert.Equal(5, n.UsuariosObjetivo);
+            // No se inventan Mean/P95/RPS.
+            Assert.DoesNotContain(n.Resultados, x => x.MetricaId == repo.Config!.ConfiguracionesMetrica.Single(cm => cm.Metrica.Nombre == NombresMetrica.Latencia).MetricaId);
+            Assert.DoesNotContain(n.Resultados, x => x.MetricaId == repo.Config!.ConfiguracionesMetrica.Single(cm => cm.Metrica.Nombre == NombresMetrica.Throughput).MetricaId);
+        });
     }
 
     [Fact]

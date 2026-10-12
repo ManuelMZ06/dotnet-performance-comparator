@@ -25,8 +25,9 @@ public static class DependencyInjection
         // CU-03
         services.AddScoped<IConfigurarEvaluacionService, ConfigurarEvaluacionService>();
 
-        // CU-04 (C-07.1)
+        // CU-04 (C-07.1 / C-07.2 / C-07.3)
         services.AddSingleton<IEvaluationExecutionGate, EvaluationExecutionGate>();
+        services.AddScoped<IStressExecutionRunner, StressExecutionRunner>();
         services.AddScoped<IEjecutarEvaluacionService, EjecutarEvaluacionService>();
 
         return services;

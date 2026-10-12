@@ -48,6 +48,26 @@ public static class EvaluationMetricResultBuilder
         return (resultados, null);
     }
 
+    /// <summary>
+    /// Construye solo los resultados válidos de las métricas seleccionadas, omitiendo (sin fallar) las que
+    /// no tengan un valor válido. Se usa para persistir las métricas parciales confiables (p. ej. CPU/RAM)
+    /// de un nivel de Estrés saturado por 0 solicitudes exitosas, sin inventar Mean/P95/RPS.
+    /// </summary>
+    public static List<(int MetricaId, decimal Valor)> BuildBestEffort(
+        IReadOnlyList<Metrica> metricasSeleccionadas, MetricInputs inputs)
+    {
+        var resultados = new List<(int, decimal)>();
+        foreach (var metrica in metricasSeleccionadas)
+        {
+            if (ValorDe(metrica.Nombre, inputs) is { } valor)
+            {
+                resultados.Add((metrica.Id, valor));
+            }
+        }
+
+        return resultados;
+    }
+
     private static decimal? ValorDe(string nombre, MetricInputs i) => nombre switch
     {
         NombresMetrica.Cpu => i.CpuPorcentaje,

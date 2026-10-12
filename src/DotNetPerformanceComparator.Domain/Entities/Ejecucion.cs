@@ -13,4 +13,7 @@ public class Ejecucion
     public ConfiguracionEvaluacion Configuracion { get; set; } = null!;
     public ICollection<CondicionEjecucion> Condiciones { get; set; } = new List<CondicionEjecucion>();
     public ICollection<ResultadoMetrica> Resultados { get; set; } = new List<ResultadoMetrica>();
+
+    /// <summary>Escalones de la prueba de Estrés (vacío para Carga). C-07.3.</summary>
+    public ICollection<NivelEstres> Niveles { get; set; } = new List<NivelEstres>();
 }

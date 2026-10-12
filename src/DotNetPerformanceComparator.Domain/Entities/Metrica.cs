@@ -12,4 +12,5 @@ public class Metrica
 
     public ICollection<ConfiguracionMetrica> ConfiguracionesMetrica { get; set; } = new List<ConfiguracionMetrica>();
     public ICollection<ResultadoMetrica> Resultados { get; set; } = new List<ResultadoMetrica>();
+    public ICollection<ResultadoMetricaNivelEstres> ResultadosNivel { get; set; } = new List<ResultadoMetricaNivelEstres>();
 }

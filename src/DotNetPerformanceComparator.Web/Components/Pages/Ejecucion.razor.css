@@ -108,6 +108,36 @@
         color: var(--color-primary-text-dark);
     }
 
+.nivel-estado {
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+    .nivel-estado--completado {
+        background: #dcfce7;
+        color: #14532d;
+    }
+
+    .nivel-estado--saturado {
+        background: #fef3c7;
+        color: #78350f;
+    }
+
+    .nivel-estado--fallido,
+    .nivel-estado--cancelado {
+        background: #fee2e2;
+        color: #7f1d1d;
+    }
+
+.ejecucion-saturacion {
+    margin-top: 0.75rem;
+    font-size: 13px;
+    font-weight: 600;
+    color: #78350f;
+}
+
 @media (max-width: 1100px) {
     .ejecucion-grid {
         grid-template-columns: minmax(0, 1fr);

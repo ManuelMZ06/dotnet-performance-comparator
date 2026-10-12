@@ -30,6 +30,10 @@
                             {
                                 <text> · @_formulario.VersionActual · repetición @_formulario.RepeticionActual</text>
                             }
+                            @if (_formulario.Fase == FaseEjecucion.NivelEstres && _formulario.NivelActual is { } n)
+                            {
+                                <text> · Nivel @n@(_formulario.TotalNiveles is { } t ? $" de {t}" : "") · @_formulario.UsuariosNivel usuarios concurrentes</text>
+                            }
                         </span>
                     }
                 </div>
@@ -42,7 +46,7 @@
                     </div>
                 }
 
-                @if (_formulario.Fase == FaseEjecucion.Medicion && (_formulario.CpuActual is not null || _formulario.RamActual is not null))
+                @if ((_formulario.Fase == FaseEjecucion.Medicion || _formulario.Fase == FaseEjecucion.NivelEstres) && (_formulario.CpuActual is not null || _formulario.RamActual is not null))
                 {
                     <div class="ejecucion-vivos">
                         <span>CPU: @Num(_formulario.CpuActual) %</span>
@@ -87,6 +91,51 @@
                             }
                         </tbody>
                     </table>
+                </Panel>
+            }
+
+            @if (_formulario.Niveles.Count > 0)
+            {
+                <Panel Title="Niveles de estrés">
+                    <table class="resultados-tabla">
+                        <thead>
+                            <tr>
+                                <th>Versión</th><th>Rep.</th><th>Nivel</th><th>Usuarios</th>
+                                <th>CPU (%)</th><th>RAM (MB)</th><th>Tiempo resp. prom. (ms)</th>
+                                <th>Latencia P95 (ms)</th><th>Throughput (req/s)</th>
+                                <th>OK / Fallidas</th><th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var nivel in _formulario.Niveles)
+                            {
+                                <tr>
+                                    <td>@nivel.VersionDotNet</td>
+                                    <td>@nivel.NumeroEjecucion</td>
+                                    <td>@nivel.NumeroNivel</td>
+                                    <td>@nivel.UsuariosObjetivo</td>
+                                    <td>@Num(nivel.Cpu)</td>
+                                    <td>@Num(nivel.RamMb)</td>
+                                    <td>@Num(nivel.TiempoRespuestaMs)</td>
+                                    <td>@Num(nivel.LatenciaP95Ms)</td>
+                                    <td>@Num(nivel.ThroughputRps)</td>
+                                    <td>@nivel.SolicitudesExitosas / @nivel.SolicitudesFallidas</td>
+                                    <td>
+                                        <span class="nivel-estado nivel-estado--@(nivel.Estado.ToLowerInvariant())">
+                                            @EstadoNivelTexto(nivel.Estado)
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @{ var saturado = _formulario.Niveles.FirstOrDefault(n => n.Estado == "Saturado"); }
+                    @if (saturado is not null)
+                    {
+                        <p class="ejecucion-saturacion">
+                            ⚠ Saturación detectada en @saturado.UsuariosObjetivo usuarios (@saturado.VersionDotNet, repetición @saturado.NumeroEjecucion).
+                        </p>
+                    }
                 </Panel>
             }
         </div>
@@ -145,8 +194,18 @@
     private static string EstadoEjecucionTexto(string estado) => estado switch
     {
         "Completada" => "Completada",
+        "CompletadaConSaturacion" => "Completada con saturación",
         "Fallida" => "Fallida",
         "Cancelada" => "Cancelada",
+        _ => estado
+    };
+
+    private static string EstadoNivelTexto(string estado) => estado switch
+    {
+        "Completado" => "Completado",
+        "Saturado" => "Saturado",
+        "Fallido" => "Fallido",
+        "Cancelado" => "Cancelado",
         _ => estado
     };
 
@@ -157,6 +216,7 @@
         FaseEjecucion.WarmUp => "Warm-up",
         FaseEjecucion.RampUp => "Ramp-up",
         FaseEjecucion.Medicion => "Medición",
+        FaseEjecucion.NivelEstres => "Nivel de estrés",
         FaseEjecucion.Finalizado => "Finalizado",
         _ => ""
     };
