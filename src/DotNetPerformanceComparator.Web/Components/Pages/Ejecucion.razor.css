@@ -84,11 +84,26 @@
 
 .ejecucion-acciones {
     margin-top: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
 }
 
     .ejecucion-acciones .btn {
         min-width: 180px;
     }
+
+.btn-success {
+    background: var(--color-success);
+    border-color: var(--color-success);
+    color: #ffffff;
+}
+
+.btn-danger {
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+    color: #ffffff;
+}
 
 .resultados-tabla {
     width: 100%;

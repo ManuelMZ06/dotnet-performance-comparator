@@ -1,0 +1,38 @@
+.line-chart {
+    margin: 0;
+}
+
+.line-chart__svg {
+    display: block;
+    width: 100%;
+    max-height: 240px;
+}
+
+.line-chart__axis {
+    stroke: var(--color-border);
+    stroke-width: 1;
+}
+
+.line-chart__line {
+    stroke: var(--color-metric-cpu, #60a5fa);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.line-chart__dot {
+    fill: var(--color-metric-cpu, #60a5fa);
+}
+
+.line-chart__label {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    fill: var(--color-text-secondary);
+}
+
+.line-chart__caption {
+    margin-top: 0.5rem;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    text-align: center;
+}

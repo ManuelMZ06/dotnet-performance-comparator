@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<IStressExecutionRunner, StressExecutionRunner>();
         services.AddScoped<IConcurrencyExecutionRunner, ConcurrencyExecutionRunner>();
         services.AddScoped<IEjecutarEvaluacionService, EjecutarEvaluacionService>();
+        services.AddScoped<IExecutionStatusQueryService, ExecutionStatusQueryService>();
 
         return services;
     }

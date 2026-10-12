@@ -120,6 +120,12 @@ public interface IEvaluationExecutionRepository
     Task FinalizarEjecucionAsync(
         int ejecucionId, string estado, DateTime fechaFin,
         IReadOnlyList<(int MetricaId, decimal Valor)>? resumen, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Carga la configuración con sus ejecuciones, resultados, condiciones y niveles de estrés, para
+    /// reconstruir el estado persistido en M-05 tras recarga/reconexión (C-07.5).
+    /// </summary>
+    Task<ConfiguracionEvaluacion?> GetConfiguracionConEjecucionesAsync(int configuracionId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -133,4 +139,19 @@ public interface IEjecutarEvaluacionService
         EjecutarEvaluacionRequest request,
         IProgress<EvaluationExecutionProgress>? progress = null,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>Estado persistido de una configuración reconstruido desde la base de datos (C-07.5).</summary>
+public sealed record EstadoEjecucionReconstruido(
+    ConfiguracionEjecutableInfo Info,
+    IReadOnlyList<EjecucionResumen> Ejecuciones,
+    IReadOnlyList<NivelEstresResumen> Niveles);
+
+/// <summary>
+/// Lectura del estado persistido de una configuración conocida, para reconstruir M-05 tras
+/// recarga/reconexión. Exclusivo de CU-04; no es la consulta histórica general de CU-05.
+/// </summary>
+public interface IExecutionStatusQueryService
+{
+    Task<EstadoEjecucionReconstruido?> ObtenerEstadoAsync(int configuracionId, CancellationToken cancellationToken = default);
 }

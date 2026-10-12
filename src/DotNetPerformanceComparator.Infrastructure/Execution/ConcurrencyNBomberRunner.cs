@@ -55,9 +55,17 @@ public sealed class ConcurrencyNBomberRunner : IConcurrencyRunner
                 var instancia = context.ScenarioInfo.InstanceNumber;
                 var ronda = coord.ProximaRonda(instancia);
 
+                // Cancelación responsiva: al detener, se pide a NBomber terminar cuanto antes.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    context.StopCurrentTest("Cancelado por el usuario");
+                    return Response.Fail(statusCode: "cancel");
+                }
+
                 await coord.EsperarRondaPermitidaAsync(ronda, cancellationToken);
                 if (coord.Faulted)
                 {
+                    context.StopCurrentTest("Cancelado por el usuario");
                     return Response.Fail(statusCode: "sync");
                 }
 
@@ -68,18 +76,24 @@ public sealed class ConcurrencyNBomberRunner : IConcurrencyRunner
                 if (coord.Faulted)
                 {
                     mensaje.Dispose();
+                    context.StopCurrentTest("Cancelado por el usuario");
                     return Response.Fail(statusCode: "sync");
                 }
 
+                using var enlazado = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, context.ScenarioCancellationToken);
                 var respuesta = await Step.Run(PasoRequest, context, async () =>
                 {
                     coord.RegistrarInicio(ronda, instancia, Stopwatch.GetTimestamp());
                     try
                     {
-                        using var http2 = await http.SendAsync(mensaje);
+                        using var http2 = await http.SendAsync(mensaje, enlazado.Token);
                         return http2.IsSuccessStatusCode
                             ? Response.Ok(statusCode: ((int)http2.StatusCode).ToString())
                             : Response.Fail(statusCode: ((int)http2.StatusCode).ToString());
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return Response.Fail(statusCode: "cancel");
                     }
                     catch
                     {

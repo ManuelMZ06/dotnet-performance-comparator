@@ -68,6 +68,9 @@ public class StressExecutionRunnerTests
             return Task.CompletedTask;
         }
 
+        public Task<ConfiguracionEvaluacion?> GetConfiguracionConEjecucionesAsync(int id, CancellationToken ct = default) =>
+            Task.FromResult<ConfiguracionEvaluacion?>(null);
+
         public decimal? ValorNivel(NivelEstres nivel, string metrica) =>
             nivel.Resultados.FirstOrDefault(r => r.MetricaId == Ids[metrica])?.Valor;
     }

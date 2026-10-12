@@ -88,6 +88,21 @@ public sealed class EvaluationExecutionRepository : IEvaluationExecutionReposito
         await context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<ConfiguracionEvaluacion?> GetConfiguracionConEjecucionesAsync(int configuracionId, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.ConfiguracionesEvaluacion
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(c => c.Proyecto)
+            .Include(c => c.TipoPrueba)
+            .Include(c => c.ConfiguracionesMetrica).ThenInclude(cm => cm.Metrica)
+            .Include(c => c.Ejecuciones).ThenInclude(e => e.Resultados).ThenInclude(r => r.Metrica)
+            .Include(c => c.Ejecuciones).ThenInclude(e => e.Condiciones)
+            .Include(c => c.Ejecuciones).ThenInclude(e => e.Niveles).ThenInclude(n => n.Resultados).ThenInclude(r => r.Metrica)
+            .FirstOrDefaultAsync(c => c.Id == configuracionId, cancellationToken);
+    }
+
     public async Task FinalizarEjecucionAsync(
         int ejecucionId, string estado, DateTime fechaFin,
         IReadOnlyList<(int MetricaId, decimal Valor)>? resumen, CancellationToken cancellationToken = default)

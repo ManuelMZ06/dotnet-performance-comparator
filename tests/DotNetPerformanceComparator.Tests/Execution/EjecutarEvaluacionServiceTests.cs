@@ -89,6 +89,9 @@ public class EjecutarEvaluacionServiceTests
             }
             return Task.CompletedTask;
         }
+
+        public Task<ConfiguracionEvaluacion?> GetConfiguracionConEjecucionesAsync(int id, CancellationToken ct = default) =>
+            Task.FromResult(Config);
     }
 
     private sealed class FakeGate(bool libre = true) : IEvaluationExecutionGate
@@ -171,6 +174,7 @@ public class EjecutarEvaluacionServiceTests
         public double P95Ms { get; init; } = 24.8;
         public double Rps { get; init; } = 47.6;
         public int StableDelayMs { get; init; } = 2200; // deja que el muestreo tome ≥2 muestras
+        public bool ObservaToken { get; init; } = true; // false simula NBomber (no cancelable a mitad de fase)
 
         public ConcurrentBag<LoadPhaseRequest> Llamadas { get; } = [];
 
@@ -179,7 +183,7 @@ public class EjecutarEvaluacionServiceTests
             Llamadas.Add(request);
             if (!request.Ramping && request.Usuarios > 1)
             {
-                await Task.Delay(StableDelayMs, ct); // fase estable
+                await Task.Delay(StableDelayMs, ObservaToken ? ct : CancellationToken.None); // fase estable
             }
 
             return new LoadPhaseResult(true, Exitosas, Fallidas, MediaMs, P95Ms, Rps);
@@ -690,6 +694,27 @@ public class EjecutarEvaluacionServiceTests
         Assert.False(r.Exito);
         Assert.Equal(EstadosEjecucion.Fallida, repo.Ejecuciones.First().Estado);
         Assert.Empty(repo.Ejecuciones.First().Resultados);
+    }
+
+    [Fact]
+    public async Task Cancelacion_DuranteFaseNoCancelable_MarcaEjecucionCanceladaSinResultados()
+    {
+        // NBomber no es cancelable a mitad de fase; al terminar, si se solicitó cancelar, la ejecución
+        // activa queda Cancelada sin resultados parciales (C-07.5, sección 18).
+        var repo = new FakeRepo { Config = Config() };
+        var load = new FakeLoadRunner { ObservaToken = false, StableDelayMs = 300 };
+        var servicio = Crear(repo, loadRunner: load);
+
+        using var cts = new CancellationTokenSource();
+        var tarea = servicio.EjecutarAsync(new EjecutarEvaluacionRequest(1), null, cts.Token);
+        await Task.Delay(100);
+        cts.Cancel();
+        var r = await tarea;
+
+        Assert.Equal(EstadosConfiguracionEvaluacion.Cancelada, r.EstadoFinal);
+        var ejecucion = Assert.Single(repo.Ejecuciones);
+        Assert.Equal(EstadosEjecucion.Cancelada, ejecucion.Estado);
+        Assert.Empty(ejecucion.Resultados);
     }
 
     [Fact]

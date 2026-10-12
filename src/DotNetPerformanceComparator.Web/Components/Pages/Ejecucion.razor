@@ -1,17 +1,22 @@
 @page "/ejecucion/{ConfiguracionId:int}"
 @using System.Globalization
 @using DotNetPerformanceComparator.Application.Evaluations.Execution
+@using DotNetPerformanceComparator.Web.Components.Shared.Charts
+@using DotNetPerformanceComparator.Web.Execution
+@implements IDisposable
 @inject IEjecutarEvaluacionService Servicio
+@inject IExecutionStatusQueryService StatusQuery
+@inject IEvaluationExecutionSessionManager Manager
 @inject ILogger<Ejecucion> Logger
 
-@* M-05 (parcial, C-07.1) — CU-04 Ejecutar prueba de rendimiento (Carga; CPU, RAM, Tiempo de respuesta). *@
+@* M-05 — CU-04 Ejecutar prueba de rendimiento (Carga / Estrés / Concurrencia). Ejecución server-side (C-07.5). *@
 
 <PageHeader Title="Ejecución de evaluación"
             Description="Monitoreo de la prueba en curso y de las métricas recolectadas" />
 
-<OperationMessage Kind="_formulario.MensajeTipo" Message="@_formulario.Mensaje" />
+<OperationMessage Kind="_mensajeTipo" Message="@_mensaje" />
 
-@if (_formulario.Info is { } info)
+@if (_info is { } info)
 {
     <div class="ejecucion-grid">
         <div class="ejecucion-grid__estado">
@@ -19,55 +24,70 @@
                 <KeyValueList Items="Cabecera(info)" />
 
                 <div class="ejecucion-estado">
-                    <span class="ejecucion-estado__badge ejecucion-estado__badge--@(_formulario.ConfiguracionEstado?.ToLowerInvariant())">
-                        @EstadoTexto(_formulario.ConfiguracionEstado)
+                    <span class="ejecucion-estado__badge ejecucion-estado__badge--@(EstadoConfig?.ToLowerInvariant())">
+                        @EstadoTexto(EstadoConfig)
                     </span>
-                    @if (_formulario.Ejecutando)
+                    @if (_snapshot is { Activa: true } s)
                     {
                         <span class="ejecucion-estado__fase">
-                            @FaseTexto(_formulario.Fase)
-                            @if (_formulario.VersionActual is not null)
+                            @FaseTexto(s.Fase)
+                            @if (s.VersionActual is not null)
                             {
-                                <text> · @_formulario.VersionActual · repetición @_formulario.RepeticionActual</text>
+                                <text> · @s.VersionActual · repetición @s.NumeroEjecucionActual</text>
                             }
-                            @if (_formulario.Fase == FaseEjecucion.NivelEstres && _formulario.NivelActual is { } n)
+                            @if (s.Fase == FaseEjecucion.NivelEstres && s.NivelActual is { } n)
                             {
-                                <text> · Nivel @n@(_formulario.TotalNiveles is { } t ? $" de {t}" : "") · @_formulario.UsuariosNivel usuarios concurrentes</text>
+                                <text> · Nivel @n@(s.TotalNiveles is { } t ? $" de {t}" : "") · @s.UsuariosNivel usuarios concurrentes</text>
                             }
-                            @if (_formulario.Fase == FaseEjecucion.Concurrencia && _formulario.UsuariosConcurrentes is { } uc)
+                            @if (s.Fase == FaseEjecucion.Concurrencia && s.UsuariosConcurrentes is { } uc)
                             {
-                                <text>
-                                    @(_formulario.RondaActual is { } ronda ? $" · Ronda {ronda}" : "")@(_formulario.TotalRondas is { } tr ? $" de {tr}" : "") · @uc usuarios concurrentes
-                                </text>
+                                <text>@(s.RondaActual is { } ronda ? $" · Ronda {ronda}" : "")@(s.TotalRondas is { } tr ? $" de {tr}" : "") · @uc usuarios concurrentes</text>
                             }
                         </span>
                     }
                 </div>
 
-                @if (_formulario.TotalPasos > 0)
+                @if (_snapshot is { TotalPasos: > 0 } sp)
                 {
-                    <div class="ejecucion-progreso" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@_formulario.ProgresoPorcentaje">
-                        <div class="ejecucion-progreso__barra" style="width:@_formulario.ProgresoPorcentaje.ToString(CultureInfo.InvariantCulture)%"></div>
-                        <span class="ejecucion-progreso__texto">@_formulario.OrdenGlobal / @_formulario.TotalPasos</span>
+                    <div class="ejecucion-progreso" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@sp.ProgresoPorcentaje">
+                        <div class="ejecucion-progreso__barra" style="width:@sp.ProgresoPorcentaje.ToString(CultureInfo.InvariantCulture)%"></div>
+                        <span class="ejecucion-progreso__texto">@sp.OrdenGlobal / @sp.TotalPasos</span>
                     </div>
                 }
 
-                @if ((_formulario.Fase == FaseEjecucion.Medicion || _formulario.Fase == FaseEjecucion.NivelEstres || _formulario.Fase == FaseEjecucion.Concurrencia) && (_formulario.CpuActual is not null || _formulario.RamActual is not null))
+                @if (_snapshot is { Activa: true } sv && (sv.CpuActual is not null || sv.RamActual is not null))
                 {
                     <div class="ejecucion-vivos">
-                        <span>CPU: @Num(_formulario.CpuActual) %</span>
-                        <span>RAM: @Num(_formulario.RamActual) MB</span>
+                        <span>CPU: @Num(sv.CpuActual) %</span>
+                        <span>RAM: @Num(sv.RamActual) MB</span>
                     </div>
                 }
 
                 <div class="ejecucion-acciones">
-                    <button type="button" class="btn btn-success" @onclick="IniciarAsync" disabled="@(!_formulario.PuedeIniciar)">
-                        @(_formulario.Ejecutando ? "Evaluación en curso..." : "Iniciar evaluación")
-                    </button>
+                    @if (PuedeIniciar)
+                    {
+                        <button type="button" class="btn btn-success" @onclick="IniciarAsync">Iniciar evaluación</button>
+                    }
+                    @if (_snapshot is { PuedeCancelar: true })
+                    {
+                        <button type="button" class="btn btn-danger" @onclick="DetenerAsync">Detener evaluación</button>
+                    }
+                    else if (_snapshot is { EstadoSesion: EstadoSesion.Cancelando })
+                    {
+                        <button type="button" class="btn btn-danger" disabled>Cancelando...</button>
+                    }
                 </div>
             </Panel>
 
-            @if (_formulario.Resultados.Count > 0)
+            @if (_snapshot is not null && (_snapshot.Activa || _snapshot.SerieCpu.Count > 0))
+            {
+                <Panel Title="Evolución de consumo de CPU">
+                    <LineChart Points="_snapshot.SerieCpu" />
+                </Panel>
+            }
+
+            @{ var resultados = Resultados; }
+            @if (resultados.Count > 0)
             {
                 <Panel Title="Resultados por ejecución">
                     <table class="resultados-tabla">
@@ -80,7 +100,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var r in _formulario.Resultados)
+                            @foreach (var r in resultados)
                             {
                                 <tr>
                                     <td>@r.VersionDotNet</td>
@@ -100,7 +120,8 @@
                 </Panel>
             }
 
-            @if (_formulario.Niveles.Count > 0)
+            @{ var niveles = Niveles; }
+            @if (niveles.Count > 0)
             {
                 <Panel Title="Niveles de estrés">
                     <table class="resultados-tabla">
@@ -113,7 +134,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var nivel in _formulario.Niveles)
+                            @foreach (var nivel in niveles)
                             {
                                 <tr>
                                     <td>@nivel.VersionDotNet</td>
@@ -135,7 +156,7 @@
                             }
                         </tbody>
                     </table>
-                    @{ var saturado = _formulario.Niveles.FirstOrDefault(n => n.Estado == "Saturado"); }
+                    @{ var saturado = niveles.FirstOrDefault(n => n.Estado == "Saturado"); }
                     @if (saturado is not null)
                     {
                         <p class="ejecucion-saturacion">
@@ -147,7 +168,8 @@
         </div>
 
         <div class="ejecucion-grid__bitacora">
-            <LogConsole Title="Bitácora de ejecución" Lines="_formulario.Bitacora" EmptyText="La bitácora mostrará el proceso al iniciar la evaluación." />
+            <LogConsole Title="Bitácora de ejecución" Lines="Logs"
+                        EmptyText="@(_reconstruido is not null ? "La serie temporal y la bitácora solo están disponibles durante la ejecución activa." : "La bitácora mostrará el proceso al iniciar la evaluación.")" />
         </div>
     </div>
 }
@@ -156,22 +178,152 @@
     [Parameter]
     public int ConfiguracionId { get; set; }
 
-    private EjecucionFormulario _formulario = default!;
+    private ConfiguracionEjecutableInfo? _info;
+    private EvaluationExecutionSessionSnapshot? _snapshot;
+    private EstadoEjecucionReconstruido? _reconstruido;
+    private string? _mensaje;
+    private OperationMessageKind _mensajeTipo;
 
-    protected override Task OnInitializedAsync()
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _pollCts;
+
+    private string? EstadoConfig =>
+        _snapshot?.EstadoPersistidoConfiguracion ?? _reconstruido?.Info.Estado ?? _info?.Estado;
+
+    private IReadOnlyList<EjecucionResumen> Resultados =>
+        _snapshot?.Resultados ?? _reconstruido?.Ejecuciones ?? [];
+
+    private IReadOnlyList<NivelEstresResumen> Niveles =>
+        _snapshot?.Niveles ?? _reconstruido?.Niveles ?? [];
+
+    private IReadOnlyList<string> Logs => _snapshot?.Logs ?? [];
+
+    private bool PuedeIniciar => _info is { PuedeEjecutar: true } && _snapshot is null;
+
+    protected override async Task OnInitializedAsync()
     {
-        _formulario = new EjecucionFormulario(Servicio, Logger, accion => InvokeAsync(() =>
+        try
         {
-            accion();
-            StateHasChanged();
-        }));
+            _info = await Servicio.ObtenerInfoAsync(ConfiguracionId);
+            if (_info is null)
+            {
+                MostrarMensaje(OperationMessageKind.Error, "La configuración indicada no existe.");
+                return;
+            }
 
-        return _formulario.CargarAsync(ConfiguracionId);
+            _snapshot = Manager.GetSnapshot(ConfiguracionId);
+
+            if (_snapshot is null && EsEstadoFinal(_info.Estado))
+            {
+                _reconstruido = await StatusQuery.ObtenerEstadoAsync(ConfiguracionId);
+            }
+            else if (_snapshot is null && !_info.PuedeEjecutar)
+            {
+                MostrarMensaje(OperationMessageKind.Info, _info.MotivoNoEjecutable ?? "La configuración no puede ejecutarse.");
+            }
+
+            if (_snapshot is { Activa: true })
+            {
+                IniciarPolling();
+            }
+            else
+            {
+                MostrarMensajeFinal();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No fue posible cargar la información de ejecución.");
+            MostrarMensaje(OperationMessageKind.Error, "No fue posible cargar la información de la evaluación.");
+        }
     }
 
-    // La ejecución pertenece al motor de Application: no se ata un CancellationToken al ciclo de vida
-    // del circuito, de modo que una desconexión/reconexión del navegador no cancela la evaluación en curso.
-    private Task IniciarAsync() => _formulario.IniciarAsync(ConfiguracionId, CancellationToken.None);
+    private async Task IniciarAsync()
+    {
+        var resultado = await Manager.StartAsync(ConfiguracionId);
+        if (!resultado.Iniciada)
+        {
+            MostrarMensaje(OperationMessageKind.Info, resultado.Mensaje);
+            _snapshot = Manager.GetSnapshot(ConfiguracionId);
+            if (_snapshot is { Activa: true }) IniciarPolling();
+            return;
+        }
+
+        _mensaje = null;
+        _reconstruido = null;
+        _snapshot = Manager.GetSnapshot(ConfiguracionId);
+        IniciarPolling();
+    }
+
+    private void DetenerAsync()
+    {
+        Manager.RequestCancellation(ConfiguracionId);
+        _snapshot = Manager.GetSnapshot(ConfiguracionId);
+    }
+
+    private void IniciarPolling()
+    {
+        _timer?.Dispose();
+        _pollCts?.Cancel();
+        _pollCts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromMilliseconds(1000));
+        _ = PollAsync(_timer, _pollCts.Token);
+    }
+
+    private async Task PollAsync(PeriodicTimer timer, CancellationToken token)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                _snapshot = Manager.GetSnapshot(ConfiguracionId);
+                await InvokeAsync(StateHasChanged);
+                if (_snapshot is null || !_snapshot.Activa)
+                {
+                    MostrarMensajeFinal();
+                    await InvokeAsync(StateHasChanged);
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // La página se cerró o se inició otro polling; no afecta a la evaluación.
+        }
+    }
+
+    private void MostrarMensajeFinal()
+    {
+        if (_snapshot is not { } s || s.Activa)
+        {
+            return;
+        }
+
+        var (tipo, texto) = s.EstadoSesion switch
+        {
+            EstadoSesion.Finalizada => (OperationMessageKind.Success, s.MensajeActual ?? "La evaluación finalizó correctamente."),
+            EstadoSesion.Cancelada => (OperationMessageKind.Info, s.MensajeActual ?? "Evaluación cancelada."),
+            _ => (OperationMessageKind.Error, s.MensajeActual ?? "La evaluación no se completó.")
+        };
+        MostrarMensaje(tipo, texto);
+    }
+
+    private void MostrarMensaje(OperationMessageKind tipo, string mensaje)
+    {
+        _mensajeTipo = tipo;
+        _mensaje = mensaje;
+    }
+
+    private static bool EsEstadoFinal(string? estado) =>
+        estado is "Finalizada" or "Fallida" or "Cancelada";
+
+    public void Dispose()
+    {
+        // Solo se detiene el temporizador de visualización; NUNCA la evaluación (vive en el manager).
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        _timer?.Dispose();
+    }
 
     private static IReadOnlyList<KeyValuePair<string, string>> Cabecera(ConfiguracionEjecutableInfo info) =>
     [

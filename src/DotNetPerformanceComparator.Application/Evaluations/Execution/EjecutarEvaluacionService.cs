@@ -259,6 +259,10 @@ public sealed class EjecutarEvaluacionService : IEjecutarEvaluacionService
                 await muestreo;
             }
 
+            // Si se solicitó cancelar durante la medición, la ejecución activa se cancela (sin resultados),
+            // aunque NBomber haya terminado su fase (no es cancelable a mitad). Lo gestiona el catch de OCE.
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!load.Started || load.SolicitudesExitosas == 0 || app.HasExited)
             {
                 await PersistirEjecucionAsync(config, carga, paso, version, orden, EstadosEjecucion.Fallida, inicio, load.SolicitudesExitosas, load.SolicitudesFallidas, null, CancellationToken.None);

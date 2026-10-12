@@ -8,6 +8,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration.GetConnectionString("DefaultConnection"));
 
+// CU-04 (C-07.5): la sesión de ejecución vive en el host Web, no en el circuito Blazor.
+builder.Services.AddSingleton<DotNetPerformanceComparator.Web.Execution.IEvaluationExecutionSessionManager,
+    DotNetPerformanceComparator.Web.Execution.EvaluationExecutionSessionManager>();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

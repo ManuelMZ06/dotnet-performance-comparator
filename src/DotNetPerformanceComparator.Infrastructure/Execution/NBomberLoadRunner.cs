@@ -22,9 +22,9 @@ public sealed class NBomberLoadRunner : ILoadRunner
     }
 
     public Task<LoadPhaseResult> RunPhaseAsync(LoadPhaseRequest request, CancellationToken cancellationToken = default)
-        => Task.Run(() => RunPhase(request), CancellationToken.None);
+        => Task.Run(() => RunPhase(request, cancellationToken), CancellationToken.None);
 
-    private LoadPhaseResult RunPhase(LoadPhaseRequest request)
+    private LoadPhaseResult RunPhase(LoadPhaseRequest request, CancellationToken cancellationToken)
     {
         var reportFolder = Directory.CreateTempSubdirectory("dnpc-nbomber-").FullName;
         try
@@ -34,14 +34,27 @@ public sealed class NBomberLoadRunner : ILoadRunner
 
             var scenario = Scenario.Create("carga", async context =>
             {
+                // Cancelación responsiva: al detener, se pide a NBomber terminar la fase cuanto antes en
+                // lugar de esperar toda la duración restante. El resultado se descarta en Application.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    context.StopCurrentTest("Cancelado por el usuario");
+                    return Response.Fail(statusCode: "cancel");
+                }
+
+                using var enlazado = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, context.ScenarioCancellationToken);
                 var step = await Step.Run(PasoRequest, context, async () =>
                 {
                     try
                     {
-                        using var respuesta = await http.GetAsync(ruta);
+                        using var respuesta = await http.GetAsync(ruta, enlazado.Token);
                         return respuesta.IsSuccessStatusCode
                             ? Response.Ok(statusCode: ((int)respuesta.StatusCode).ToString())
                             : Response.Fail(statusCode: ((int)respuesta.StatusCode).ToString());
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return Response.Fail(statusCode: "cancel");
                     }
                     catch
                     {
@@ -51,7 +64,14 @@ public sealed class NBomberLoadRunner : ILoadRunner
 
                 if (request.IntervaloSolicitudesMs > 0)
                 {
-                    await Task.Delay(request.IntervaloSolicitudesMs);
+                    try
+                    {
+                        await Task.Delay(request.IntervaloSolicitudesMs, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Detención solicitada durante el pacing; la fase terminará enseguida.
+                    }
                 }
 
                 return step;

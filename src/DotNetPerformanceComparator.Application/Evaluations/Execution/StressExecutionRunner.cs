@@ -158,6 +158,15 @@ public sealed class StressExecutionRunner : IStressExecutionRunner
 
             var fin = _timeProvider.GetUtcNow().UtcDateTime;
 
+            // Cancelación solicitada durante la medición del nivel: el nivel activo se marca Cancelado
+            // (sin resultados) aunque NBomber haya terminado su fase; la OCE propaga a la Ejecucion/Config.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                await _repo.CompletarNivelAsync(nivelId, EstadosNivelEstres.Cancelado, fin,
+                    load.SolicitudesExitosas, load.SolicitudesFallidas, "Nivel cancelado durante la medición.", [], CancellationToken.None);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             if (!load.Started)
             {
                 await _repo.CompletarNivelAsync(nivelId, EstadosNivelEstres.Fallido, fin,

@@ -1,0 +1,55 @@
+@using System.Globalization
+
+@if (!_geometry.HasData)
+{
+    <EmptyState Message="@EmptyMessage" />
+}
+else
+{
+    <figure class="line-chart">
+        <svg class="line-chart__svg" viewBox="0 0 @Num(_geometry.Width) @Num(_geometry.Height)" role="img" aria-labelledby="@_titleId" preserveAspectRatio="xMidYMid meet">
+            <title id="@_titleId">@Description()</title>
+
+            @* Ejes *@
+            <line class="line-chart__axis" x1="@Num(_geometry.PlotLeft)" y1="@Num(_geometry.PlotTop)" x2="@Num(_geometry.PlotLeft)" y2="@Num(_geometry.PlotBottom)" />
+            <line class="line-chart__axis" x1="@Num(_geometry.PlotLeft)" y1="@Num(_geometry.PlotBottom)" x2="@Num(_geometry.PlotRight)" y2="@Num(_geometry.PlotBottom)" />
+
+            @* Etiquetas Y (mínimo y máximo) *@
+            <text class="line-chart__label" x="@Num(_geometry.PlotLeft - 6)" y="@Num(_geometry.PlotBottom)" text-anchor="end" dominant-baseline="middle">@Eje(_geometry.MinY)</text>
+            <text class="line-chart__label" x="@Num(_geometry.PlotLeft - 6)" y="@Num(_geometry.PlotTop)" text-anchor="end" dominant-baseline="middle">@Eje(_geometry.MaxY)</text>
+
+            @if (_geometry.Puntos.Count == 1)
+            {
+                <circle class="line-chart__dot" cx="@Num(_geometry.Puntos[0].X)" cy="@Num(_geometry.Puntos[0].Y)" r="3" />
+            }
+            else
+            {
+                <polyline class="line-chart__line" points="@_geometry.Polyline" fill="none" />
+            }
+        </svg>
+        <figcaption class="line-chart__caption">@Caption · eje X: muestras sucesivas (~1 s)</figcaption>
+    </figure>
+}
+
+@code {
+    private readonly string _titleId = $"line-chart-{Guid.NewGuid():N}";
+    private LineChartGeometry _geometry = LineChartLayout.Calculate([]);
+
+    [Parameter]
+    public IReadOnlyList<LineChartPoint> Points { get; set; } = [];
+
+    [Parameter]
+    public string Caption { get; set; } = "Evolución de CPU (%)";
+
+    [Parameter]
+    public string EmptyMessage { get; set; } = "La serie temporal de CPU aparecerá durante la medición.";
+
+    protected override void OnParametersSet() => _geometry = LineChartLayout.Calculate(Points);
+
+    private static string Num(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string Eje(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private string Description() =>
+        $"{Caption}. {_geometry.Puntos.Count} muestras; máximo {Eje(_geometry.MaxY)} %.";
+}
