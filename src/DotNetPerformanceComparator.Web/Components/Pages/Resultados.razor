@@ -1,0 +1,231 @@
+@page "/resultados"
+@using DotNetPerformanceComparator.Application.Evaluations.Results
+@inject IConsultaResultadosService Servicio
+@inject ILogger<Resultados> Logger
+
+@* M-06 — CU-05 Consultar resultados. Solo lectura; consume IConsultaResultadosService. *@
+
+<PageHeader Title="Resultados" Description="Consulta de resultados de evaluaciones registradas" />
+
+<OperationMessage Kind="_modelo.MensajeTipo" Message="@_modelo.Mensaje" />
+
+<div class="resultados-grid">
+    <div class="resultados-grid__listado">
+        <Panel Title="Evaluaciones">
+            @if (_modelo.CargandoListado)
+            {
+                <p class="resultados-cargando">Cargando evaluaciones…</p>
+            }
+            else if (_modelo.ListadoVacio)
+            {
+                <EmptyState Message="Todavía no hay evaluaciones registradas." />
+            }
+            else
+            {
+                <div class="tabla-scroll">
+                    <table class="resultados-tabla">
+                        <thead>
+                            <tr>
+                                <th>Evaluación</th><th>Proyecto</th><th>Tipo</th>
+                                <th>Fecha</th><th>Estado</th><th>Resultados</th><th><span class="sr-only">Acción</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in _modelo.Evaluaciones)
+                            {
+                                <tr class="@(e.Id == _modelo.SeleccionId ? "resultados-fila--activa" : null)">
+                                    <td>@e.Nombre</td>
+                                    <td>@e.Proyecto</td>
+                                    <td>@e.TipoPrueba</td>
+                                    <td>@ConsultaResultadosModelo.FechaCorta(e.FechaCreacion)</td>
+                                    <td>@ConsultaResultadosModelo.EstadoEvaluacionTexto(e.Estado)</td>
+                                    <td>
+                                        <span class="disponibilidad disponibilidad--@(e.TieneResultados ? "si" : "no")">
+                                            @(e.TieneResultados ? "Disponibles" : "Sin resultados")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-secondary btn-sm" @onclick="() => SeleccionarAsync(e.Id)">Ver</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </Panel>
+    </div>
+
+    <div class="resultados-grid__detalle">
+        @if (_modelo.SeleccionId is null)
+        {
+            <Panel Title="Detalle de la evaluación">
+                <EmptyState Message="Seleccione una evaluación de la lista para ver su detalle." />
+            </Panel>
+        }
+        else if (_modelo.CargandoDetalle)
+        {
+            <Panel Title="Detalle de la evaluación">
+                <p class="resultados-cargando">Cargando detalle…</p>
+            </Panel>
+        }
+        else if (_modelo.EvaluacionNoEncontrada)
+        {
+            <Panel Title="Detalle de la evaluación">
+                <EmptyState Message="La evaluación seleccionada ya no existe." />
+            </Panel>
+        }
+        else if (_modelo.Detalle is { } detalle)
+        {
+            <Panel Title="Información general">
+                <KeyValueList Items="Cabecera(detalle)" />
+                @if (detalle.MetricasSeleccionadas.Count > 0)
+                {
+                    <div class="resultados-metricas">
+                        <span class="resultados-metricas__titulo">Métricas seleccionadas:</span>
+                        @foreach (var m in detalle.MetricasSeleccionadas)
+                        {
+                            <span class="chip">@m.Nombre@(string.IsNullOrEmpty(m.Unidad) ? "" : $" ({m.Unidad})")</span>
+                        }
+                    </div>
+                }
+            </Panel>
+
+            @if (!detalle.TieneResultados)
+            {
+                <Panel Title="Resultados">
+                    <OperationMessage Kind="OperationMessageKind.Info" Message="Todavía no hay resultados registrados para esta evaluación." />
+                </Panel>
+            }
+
+            @if (detalle.Ejecuciones.Count > 0)
+            {
+                <Panel Title="Ejecuciones">
+                    @foreach (var eje in detalle.Ejecuciones)
+                    {
+                        <div class="ejecucion-bloque">
+                            <h3 class="ejecucion-bloque__titulo">
+                                @eje.VersionDotNet · repetición @eje.NumeroEjecucion
+                                <span class="estado-badge estado-badge--@(eje.Estado.ToLowerInvariant())">@ConsultaResultadosModelo.EstadoEjecucionTexto(eje.Estado)</span>
+                            </h3>
+
+                            @* Resumen de la ejecución (ResultadoMetrica). *@
+                            @if (eje.Resultados.Count > 0)
+                            {
+                                <div class="tabla-scroll">
+                                    <table class="resultados-tabla">
+                                        <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var r in eje.Resultados)
+                                            {
+                                                <tr><td>@r.Metrica</td><td>@ConsultaResultadosModelo.ValorConUnidad(r)</td></tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="resultados-nota">No existe un resumen general para esta ejecución.</p>
+                            }
+
+                            @* Niveles de Estrés (solo si existen). *@
+                            @if (eje.Niveles.Count > 0)
+                            {
+                                <h4 class="ejecucion-bloque__subtitulo">Niveles de estrés</h4>
+                                <div class="tabla-scroll">
+                                    <table class="resultados-tabla">
+                                        <thead>
+                                            <tr><th>Nivel</th><th>Usuarios</th><th>Estado</th><th>OK / Fallidas</th><th>Métricas</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var n in eje.Niveles)
+                                            {
+                                                <tr>
+                                                    <td>@n.NumeroNivel</td>
+                                                    <td>@n.UsuariosObjetivo</td>
+                                                    <td><span class="estado-badge estado-badge--@(n.Estado.ToLowerInvariant())">@ConsultaResultadosModelo.EstadoNivelTexto(n.Estado)</span></td>
+                                                    <td>@n.SolicitudesExitosas / @n.SolicitudesFallidas</td>
+                                                    <td>
+                                                        @if (n.Resultados.Count > 0)
+                                                        {
+                                                            @string.Join(" · ", n.Resultados.Select(r => $"{r.Metrica}: {ConsultaResultadosModelo.ValorConUnidad(r)}"))
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="resultados-nota">— sin métricas registradas</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+
+                            @* Condiciones de ejecución (información secundaria). *@
+                            @if (eje.Condiciones.Count > 0)
+                            {
+                                <details class="resultados-condiciones">
+                                    <summary>Condiciones de ejecución (@eje.Condiciones.Count)</summary>
+                                    <div class="tabla-scroll">
+                                        <table class="resultados-tabla resultados-tabla--compacta">
+                                            <thead><tr><th>Clave</th><th>Valor</th></tr></thead>
+                                            <tbody>
+                                                @foreach (var c in eje.Condiciones)
+                                                {
+                                                    <tr><td>@c.Clave</td><td>@c.Valor</td></tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </details>
+                            }
+                        </div>
+                    }
+                </Panel>
+            }
+            else
+            {
+                <Panel Title="Ejecuciones">
+                    <EmptyState Message="Esta evaluación no tiene ejecuciones registradas." />
+                </Panel>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private ConsultaResultadosModelo _modelo = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _modelo = new ConsultaResultadosModelo(Servicio, Logger);
+        await _modelo.CargarListadoAsync();
+    }
+
+    private Task SeleccionarAsync(int id) => _modelo.SeleccionarAsync(id);
+
+    private IReadOnlyList<KeyValuePair<string, string>> Cabecera(EvaluacionDetalleConsulta d)
+    {
+        var items = new List<KeyValuePair<string, string>>
+        {
+            new("Evaluación", d.Nombre),
+            new("Proyecto", d.Proyecto),
+            new("Tipo de prueba", d.TipoPrueba),
+            new("Estado", ConsultaResultadosModelo.EstadoEvaluacionTexto(d.Estado)),
+            new("Fecha de creación", ConsultaResultadosModelo.FechaCorta(d.FechaCreacion)),
+            new("Ejecuciones configuradas", d.NumeroEjecuciones.ToString()),
+            new("Endpoint", $"{d.RutaObjetivo} (GET)")
+        };
+        if (d.Migracion is not null)
+        {
+            items.Add(new("Migración .NET 10", d.Migracion));
+        }
+        if (!string.IsNullOrWhiteSpace(d.Observaciones))
+        {
+            items.Add(new("Observaciones", d.Observaciones!));
+        }
+        return items;
+    }
+}
