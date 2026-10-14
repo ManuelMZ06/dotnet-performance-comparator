@@ -101,6 +101,25 @@
             @if (detalle.Ejecuciones.Count > 0)
             {
                 <Panel Title="Ejecuciones">
+                    @if (_modelo.MetricasDisponibles.Count > 0)
+                    {
+                        <div class="resultados-filtro">
+                            <label for="filtro-metrica">Filtrar por métrica:</label>
+                            <select id="filtro-metrica" class="form-control" value="@(_modelo.MetricaFiltroId?.ToString() ?? "")" @onchange="OnFiltroMetricaChanged">
+                                <option value="">Todas las métricas</option>
+                                @foreach (var m in _modelo.MetricasDisponibles)
+                                {
+                                    <option value="@m.MetricaId">@m.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    }
+
+                    @if (_modelo.FiltroSinCoincidencias)
+                    {
+                        <OperationMessage Kind="OperationMessageKind.Info" Message="La métrica seleccionada no tiene resultados registrados en esta evaluación." />
+                    }
+
                     @foreach (var eje in detalle.Ejecuciones)
                     {
                         <div class="ejecucion-bloque">
@@ -109,20 +128,25 @@
                                 <span class="estado-badge estado-badge--@(eje.Estado.ToLowerInvariant())">@ConsultaResultadosModelo.EstadoEjecucionTexto(eje.Estado)</span>
                             </h3>
 
-                            @* Resumen de la ejecución (ResultadoMetrica). *@
-                            @if (eje.Resultados.Count > 0)
+                            @* Resumen de la ejecución (ResultadoMetrica), filtrado por métrica si aplica. *@
+                            @{ var resumenVisible = _modelo.ResultadosVisibles(eje); }
+                            @if (resumenVisible.Count > 0)
                             {
                                 <div class="tabla-scroll">
                                     <table class="resultados-tabla">
                                         <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
                                         <tbody>
-                                            @foreach (var r in eje.Resultados)
+                                            @foreach (var r in resumenVisible)
                                             {
                                                 <tr><td>@r.Metrica</td><td>@ConsultaResultadosModelo.ValorConUnidad(r)</td></tr>
                                             }
                                         </tbody>
                                     </table>
                                 </div>
+                            }
+                            else if (_modelo.FiltroActivo)
+                            {
+                                <p class="resultados-nota">No hay un resultado registrado para esta métrica.</p>
                             }
                             else
                             {
@@ -147,9 +171,14 @@
                                                     <td><span class="estado-badge estado-badge--@(n.Estado.ToLowerInvariant())">@ConsultaResultadosModelo.EstadoNivelTexto(n.Estado)</span></td>
                                                     <td>@n.SolicitudesExitosas / @n.SolicitudesFallidas</td>
                                                     <td>
-                                                        @if (n.Resultados.Count > 0)
+                                                        @{ var nivelVisible = _modelo.ResultadosVisibles(n); }
+                                                        @if (nivelVisible.Count > 0)
                                                         {
-                                                            @string.Join(" · ", n.Resultados.Select(r => $"{r.Metrica}: {ConsultaResultadosModelo.ValorConUnidad(r)}"))
+                                                            @string.Join(" · ", nivelVisible.Select(r => $"{r.Metrica}: {ConsultaResultadosModelo.ValorConUnidad(r)}"))
+                                                        }
+                                                        else if (_modelo.FiltroActivo)
+                                                        {
+                                                            <span class="resultados-nota">Sin resultado para esta métrica</span>
                                                         }
                                                         else
                                                         {
@@ -205,6 +234,12 @@
     }
 
     private Task SeleccionarAsync(int id) => _modelo.SeleccionarAsync(id);
+
+    private void OnFiltroMetricaChanged(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString();
+        _modelo.AplicarFiltroMetrica(int.TryParse(valor, out var metricaId) ? metricaId : null);
+    }
 
     private IReadOnlyList<KeyValuePair<string, string>> Cabecera(EvaluacionDetalleConsulta d)
     {

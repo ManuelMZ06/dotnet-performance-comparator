@@ -36,6 +36,37 @@ public sealed class ConsultaResultadosModelo
 
     public bool ListadoVacio => !CargandoListado && Evaluaciones.Count == 0;
 
+    // ----------------------------------------------------------------- CU-06 (filtro por métrica)
+
+    /// <summary>MetricaId del filtro activo; null = "todas las métricas" (vista completa de CU-05).</summary>
+    public int? MetricaFiltroId { get; private set; }
+
+    public bool FiltroActivo => MetricaFiltroId is not null;
+
+    /// <summary>Métricas ofrecidas por el filtro: solo las seleccionadas en la evaluación actual.</summary>
+    public IReadOnlyList<MetricaSeleccionadaConsulta> MetricasDisponibles => Detalle?.MetricasSeleccionadas ?? [];
+
+    /// <summary>Aplica (o quita, con null) el filtro de métrica. Solo afecta la visualización.</summary>
+    public void AplicarFiltroMetrica(int? metricaId) => MetricaFiltroId = metricaId;
+
+    public void QuitarFiltroMetrica() => MetricaFiltroId = null;
+
+    /// <summary>Resultados de resumen visibles de una ejecución según el filtro (colección fuente intacta).</summary>
+    public IReadOnlyList<ResultadoMetricaConsulta> ResultadosVisibles(EjecucionConsulta ejecucion) =>
+        MetricaFiltroId is { } id ? ejecucion.Resultados.Where(r => r.MetricaId == id).ToList() : ejecucion.Resultados;
+
+    /// <summary>Resultados visibles de un nivel de estrés según el filtro.</summary>
+    public IReadOnlyList<ResultadoMetricaConsulta> ResultadosVisibles(NivelEstresConsulta nivel) =>
+        MetricaFiltroId is { } id ? nivel.Resultados.Where(r => r.MetricaId == id).ToList() : nivel.Resultados;
+
+    /// <summary>
+    /// true cuando hay un filtro activo y la evaluación tiene resultados, pero ninguno corresponde a la
+    /// métrica filtrada (caso B). Se distingue de "la evaluación no tiene resultados" (caso A).
+    /// </summary>
+    public bool FiltroSinCoincidencias =>
+        FiltroActivo && Detalle is { TieneResultados: true } d &&
+        !d.Ejecuciones.Any(e => ResultadosVisibles(e).Count > 0 || e.Niveles.Any(n => ResultadosVisibles(n).Count > 0));
+
     public async Task CargarListadoAsync(CancellationToken cancellationToken = default)
     {
         CargandoListado = true;
@@ -62,6 +93,7 @@ public sealed class ConsultaResultadosModelo
         Detalle = null;
         EvaluacionNoEncontrada = false;
         Mensaje = null;
+        MetricaFiltroId = null; // el filtro vuelve al estado inicial al cambiar de evaluación
         CargandoDetalle = true;
         var ticket = ++_ticketSeleccion;
 
@@ -102,6 +134,7 @@ public sealed class ConsultaResultadosModelo
         Detalle = null;
         EvaluacionNoEncontrada = false;
         CargandoDetalle = false;
+        MetricaFiltroId = null;
     }
 
     private void MostrarMensaje(OperationMessageKind tipo, string mensaje)

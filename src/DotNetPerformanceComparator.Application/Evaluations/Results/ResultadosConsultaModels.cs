@@ -16,11 +16,14 @@ public sealed record EvaluacionResumenConsulta(
     DateTime FechaCreacion,
     bool TieneResultados);
 
-/// <summary>Una métrica seleccionada en la configuración (nombre del catálogo y su unidad).</summary>
-public sealed record MetricaSeleccionadaConsulta(string Nombre, string Unidad);
+/// <summary>Una métrica seleccionada en la configuración (Id estable del catálogo, nombre y unidad).</summary>
+public sealed record MetricaSeleccionadaConsulta(int MetricaId, string Nombre, string Unidad);
 
-/// <summary>Valor persistido de una métrica (resumen de ejecución o nivel de estrés).</summary>
-public sealed record ResultadoMetricaConsulta(string Metrica, string Unidad, decimal Valor);
+/// <summary>
+/// Valor persistido de una métrica (resumen de ejecución o nivel de estrés). Incluye <c>MetricaId</c> como
+/// identificador estable para que CU-06 filtre por métrica sin depender del texto de presentación.
+/// </summary>
+public sealed record ResultadoMetricaConsulta(int MetricaId, string Metrica, string Unidad, decimal Valor);
 
 /// <summary>Condición de ejecución registrada (contexto reproducible: TipoPrueba, SDK, parámetros, etc.).</summary>
 public sealed record CondicionConsulta(string Clave, string Valor);

@@ -63,7 +63,7 @@ public sealed class ConsultaResultadosRepository : IConsultaResultadosRepository
         }
 
         var metricas = config.ConfiguracionesMetrica
-            .Select(cm => new MetricaSeleccionadaConsulta(cm.Metrica.Nombre, cm.Metrica.Unidad))
+            .Select(cm => new MetricaSeleccionadaConsulta(cm.MetricaId, cm.Metrica.Nombre, cm.Metrica.Unidad))
             .ToList();
 
         var ejecuciones = config.Ejecuciones
@@ -101,8 +101,8 @@ public sealed class ConsultaResultadosRepository : IConsultaResultadosRepository
         n.Resultados.Select(MapResultado).ToList());
 
     private static ResultadoMetricaConsulta MapResultado(ResultadoMetrica r) =>
-        new(r.Metrica.Nombre, r.Metrica.Unidad, r.Valor);
+        new(r.MetricaId, r.Metrica.Nombre, r.Metrica.Unidad, r.Valor);
 
     private static ResultadoMetricaConsulta MapResultado(ResultadoMetricaNivelEstres r) =>
-        new(r.Metrica.Nombre, r.Metrica.Unidad, r.Valor);
+        new(r.MetricaId, r.Metrica.Nombre, r.Metrica.Unidad, r.Valor);
 }
