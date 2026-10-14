@@ -1,3 +1,4 @@
+using DotNetPerformanceComparator.Application.Evaluations.Comparison;
 using DotNetPerformanceComparator.Application.Evaluations.Configuration;
 using DotNetPerformanceComparator.Application.Evaluations.Execution;
 using DotNetPerformanceComparator.Application.Evaluations.Results;
@@ -35,6 +36,9 @@ public static class DependencyInjection
 
         // CU-05
         services.AddScoped<IConsultaResultadosService, ConsultaResultadosService>();
+
+        // CU-07 (motor comparativo puro/determinista; sin estado, sin dependencias)
+        services.AddSingleton<IComparacionResultadosService, ComparacionResultadosService>();
 
         return services;
     }
