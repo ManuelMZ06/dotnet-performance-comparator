@@ -1,6 +1,7 @@
 @page "/resultados"
 @using DotNetPerformanceComparator.Application.Evaluations.Results
 @inject IConsultaResultadosService Servicio
+@inject NavigationManager Navigation
 @inject ILogger<Resultados> Logger
 
 @* M-06 — CU-05 Consultar resultados. Solo lectura; consume IConsultaResultadosService. *@
@@ -89,6 +90,11 @@
                         }
                     </div>
                 }
+                <div class="resultados-acciones">
+                    <button type="button" class="btn btn-primary btn-sm" @onclick="EnviarAComparacion">
+                        Enviar a comparación
+                    </button>
+                </div>
             </Panel>
 
             @if (!detalle.TieneResultados)
@@ -239,6 +245,18 @@
     {
         var valor = e.Value?.ToString();
         _modelo.AplicarFiltroMetrica(int.TryParse(valor, out var metricaId) ? metricaId : null);
+    }
+
+    // CU-07: abre M-07 sobre la evaluación seleccionada. Propaga el enfoque de métrica de CU-06 por
+    // query parameter estable (MetricaId) cuando hay un filtro activo; sin filtro, M-07 muestra todas.
+    private void EnviarAComparacion()
+    {
+        if (_modelo.SeleccionId is not { } id)
+        {
+            return;
+        }
+
+        Navigation.NavigateTo(ConsultaResultadosModelo.UrlComparacion(id, _modelo.MetricaFiltroId));
     }
 
     private IReadOnlyList<KeyValuePair<string, string>> Cabecera(EvaluacionDetalleConsulta d)

@@ -1,0 +1,261 @@
+@page "/comparacion/{ConfiguracionId:int}"
+@using DotNetPerformanceComparator.Application.Evaluations.Comparison
+@using DotNetPerformanceComparator.Application.Evaluations.Results
+@inject IConsultaResultadosService Consulta
+@inject IComparacionResultadosService Comparador
+@inject ILogger<Comparacion> Logger
+
+@* M-07 — CU-07 Comparar .NET 8 vs .NET 10. Comparación intra-evaluación; el cálculo vive en Application. *@
+
+<PageHeader Title="Comparación .NET 8 vs .NET 10"
+            Description="Comparación de rendimiento y consumo entre la versión base (.NET 8) y la experimental (.NET 10)" />
+
+<OperationMessage Kind="_modelo.MensajeTipo" Message="@_modelo.Mensaje" />
+
+@if (_modelo.Cargando)
+{
+    <Panel Title="Comparación">
+        <p class="comp-cargando">Cargando comparación…</p>
+    </Panel>
+}
+else if (_modelo.EvaluacionNoEncontrada)
+{
+    <Panel Title="Comparación">
+        <EmptyState Message="La evaluación indicada no existe." />
+        <a class="btn btn-secondary btn-sm" href="/resultados">Volver a Resultados</a>
+    </Panel>
+}
+else if (_modelo.Detalle is { } detalle && _modelo.Resumen is { } resumen)
+{
+    <Panel Title="Información general">
+        <KeyValueList Items="Cabecera(detalle)" />
+        @if (_modelo.MetricasDisponibles.Count > 0)
+        {
+            <div class="comp-filtro">
+                <label for="comp-filtro-metrica">Enfocar métrica:</label>
+                <select id="comp-filtro-metrica" class="form-control"
+                        value="@(_modelo.MetricaFiltroId?.ToString() ?? "")" @onchange="OnFiltroMetricaChanged">
+                    <option value="">Todas las métricas</option>
+                    @foreach (var m in _modelo.MetricasDisponibles)
+                    {
+                        <option value="@m.MetricaId">@m.Nombre</option>
+                    }
+                </select>
+            </div>
+        }
+    </Panel>
+
+    @if (_modelo.SinResultados)
+    {
+        <Panel Title="Comparación">
+            <OperationMessage Kind="OperationMessageKind.Info" Message="Todavía no hay resultados registrados para esta evaluación; no es posible compararla." />
+        </Panel>
+    }
+    else
+    {
+        <Panel Title="Conclusión automática">
+            <OperationMessage Kind="OperationMessageKind.Info" Message="@_modelo.Conclusion().Texto" />
+        </Panel>
+
+        @* --------------------------------------------------- Resumen (Carga/Concurrencia, o nivel máximo Estrés) *@
+        <Panel Title="@(_modelo.EsEstres ? "Resumen (nivel máximo)" : "Resumen comparativo")">
+            @if (_modelo.EsEstres && !resumen.EsComparable)
+            {
+                <OperationMessage Kind="OperationMessageKind.Warning"
+                                  Message="No existe una comparación de resumen válida al nivel máximo para esta evaluación (saturación)." />
+            }
+            else if (!resumen.EsComparable)
+            {
+                <OperationMessage Kind="OperationMessageKind.Warning"
+                                  Message="No hay métricas comparables en esta evaluación. Se detalla abajo qué métricas no pudieron compararse." />
+            }
+
+            @if (!(_modelo.EsEstres && !resumen.EsComparable))
+            {
+                @TablaComparativa(_modelo.MetricasVisibles(resumen))
+            }
+
+            @if (resumen.NotaNoComparable is { } notaResumen)
+            {
+                <p class="comp-nota">@notaResumen</p>
+            }
+        </Panel>
+
+        @* --------------------------------------------------- Estrés: comparación por nivel + contexto *@
+        @if (_modelo.Estres is { } estres)
+        {
+            <Panel Title="Comparación por nivel de carga">
+                @if (estres.Niveles.Count == 0)
+                {
+                    <EmptyState Message="No hay niveles de estrés registrados para comparar." />
+                }
+                else
+                {
+                    @foreach (var nivel in estres.Niveles)
+                    {
+                        <div class="comp-nivel">
+                            <h3 class="comp-nivel__titulo">
+                                @nivel.UsuariosObjetivo usuarios
+                                <span class="comp-badge comp-badge--@(nivel.NivelComparable ? "si" : "no")">
+                                    @(nivel.NivelComparable ? "Comparable" : "No comparable")
+                                </span>
+                            </h3>
+                            @{ var filas = _modelo.MetricasVisibles(nivel); }
+                            @if (nivel.NivelComparable && filas.Count > 0)
+                            {
+                                @TablaComparativa(filas)
+                            }
+                            else
+                            {
+                                <p class="comp-nota">@(nivel.NotaNivel ?? "No hay métricas comparables en este nivel.")</p>
+                            }
+                        </div>
+                    }
+                }
+            </Panel>
+
+            <Panel Title="Contexto de saturación observado">
+                <p class="comp-nota">Describe únicamente el experimento realizado; no representa una capacidad máxima ni una séptima métrica.</p>
+                <div class="comp-saturacion">
+                    <div class="comp-saturacion__col">
+                        <h4>.NET 8 (referencia)</h4>
+                        <p>@ComparacionResultadosModelo.ContextoMaximoTexto(estres.Contexto.Net8)</p>
+                        <p>@ComparacionResultadosModelo.ContextoSaturacionTexto(estres.Contexto.Net8)</p>
+                    </div>
+                    <div class="comp-saturacion__col">
+                        <h4>.NET 10 (experimental)</h4>
+                        <p>@ComparacionResultadosModelo.ContextoMaximoTexto(estres.Contexto.Net10)</p>
+                        <p>@ComparacionResultadosModelo.ContextoSaturacionTexto(estres.Contexto.Net10)</p>
+                    </div>
+                </div>
+            </Panel>
+        }
+
+        @* --------------------------------------------------- Ejecuciones individuales (trazabilidad) *@
+        <Panel Title="Ejecuciones individuales">
+            <details class="comp-ejecuciones">
+                <summary>Ver las ejecuciones que respaldan los promedios (@detalle.Ejecuciones.Count)</summary>
+                <div class="tabla-scroll">
+                    <table class="resultados-tabla resultados-tabla--compacta">
+                        <thead>
+                            <tr><th>Versión</th><th>Repetición</th><th>Estado</th><th>Resultados persistidos</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var eje in detalle.Ejecuciones)
+                            {
+                                <tr>
+                                    <td>@eje.VersionDotNet</td>
+                                    <td>@eje.NumeroEjecucion</td>
+                                    <td>@ComparacionResultadosModelo.EstadoEjecucionTexto(eje.Estado)</td>
+                                    <td>
+                                        @if (eje.Resultados.Count > 0)
+                                        {
+                                            @string.Join(" · ", eje.Resultados.Select(r => $"{r.Metrica}: {ComparacionResultadosModelo.Valor(r.Valor, r.Unidad)}"))
+                                        }
+                                        else if (eje.Niveles.Count > 0)
+                                        {
+                                            <text>@eje.Niveles.Count nivel(es) de estrés</text>
+                                        }
+                                        else
+                                        {
+                                            <text>— sin resultados</text>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        </Panel>
+    }
+}
+
+@code {
+    [Parameter] public int ConfiguracionId { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "metricaId")]
+    public int? MetricaId { get; set; }
+
+    private ComparacionResultadosModelo _modelo = default!;
+    private int _cargadaId;
+    private int? _cargadaMetricaId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _modelo ??= new ComparacionResultadosModelo(Consulta, Comparador, Logger);
+
+        // Recargar solo si cambió la configuración; el enfoque de métrica se aplica sin recalcular.
+        if (_modelo.Detalle is null || _cargadaId != ConfiguracionId)
+        {
+            _cargadaId = ConfiguracionId;
+            _cargadaMetricaId = MetricaId;
+            await _modelo.CargarAsync(ConfiguracionId, MetricaId);
+        }
+        else if (_cargadaMetricaId != MetricaId)
+        {
+            _cargadaMetricaId = MetricaId;
+            _modelo.AplicarFiltroMetrica(MetricaId);
+        }
+    }
+
+    private void OnFiltroMetricaChanged(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString();
+        _modelo.AplicarFiltroMetrica(int.TryParse(valor, out var metricaId) ? metricaId : null);
+        _cargadaMetricaId = _modelo.MetricaFiltroId;
+    }
+
+    private RenderFragment TablaComparativa(IReadOnlyList<ComparacionMetrica> filas) => __builder =>
+    {
+        <div class="tabla-scroll">
+            <table class="resultados-tabla">
+                <thead>
+                    <tr>
+                        <th>Métrica</th><th>.NET 8</th><th>.NET 10</th>
+                        <th>Diferencia</th><th>Variación %</th><th>Interpretación</th><th>Pares</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in filas)
+                    {
+                        <tr>
+                            <td>@m.Nombre@(string.IsNullOrEmpty(m.Unidad) ? "" : $" ({m.Unidad})")</td>
+                            <td>@ComparacionResultadosModelo.Valor(m.PromedioNet8, m.Unidad)</td>
+                            <td>@ComparacionResultadosModelo.Valor(m.PromedioNet10, m.Unidad)</td>
+                            <td>@ComparacionResultadosModelo.Diferencia(m)</td>
+                            <td>@ComparacionResultadosModelo.Porcentaje(m.DiferenciaPorcentual)</td>
+                            <td>
+                                <span class="comp-interp comp-interp--@ComparacionResultadosModelo.InterpretacionClase(m.Interpretacion)">
+                                    @ComparacionResultadosModelo.InterpretacionTexto(m.Interpretacion)
+                                </span>
+                            </td>
+                            <td class="comp-pares">
+                                @ComparacionResultadosModelo.ParesTexto(m)
+                                @if (m.Nota is { } nota)
+                                {
+                                    <span class="comp-nota-inline" title="@nota">ⓘ</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    };
+
+    private IReadOnlyList<KeyValuePair<string, string>> Cabecera(EvaluacionDetalleConsulta d)
+    {
+        var items = new List<KeyValuePair<string, string>>
+        {
+            new("Evaluación", d.Nombre),
+            new("Proyecto", d.Proyecto),
+            new("Tipo de prueba", d.TipoPrueba),
+            new("Versión base", ".NET 8"),
+            new("Versión experimental", ".NET 10"),
+            new("Ejecuciones configuradas", d.NumeroEjecuciones.ToString())
+        };
+        return items;
+    }
+}

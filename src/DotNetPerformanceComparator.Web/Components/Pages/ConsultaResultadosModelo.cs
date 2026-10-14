@@ -51,6 +51,13 @@ public sealed class ConsultaResultadosModelo
 
     public void QuitarFiltroMetrica() => MetricaFiltroId = null;
 
+    /// <summary>
+    /// URL de M-07 (CU-07) para la evaluación indicada, propagando el enfoque de métrica de CU-06 como
+    /// query parameter estable (MetricaId) cuando hay filtro activo. Sin filtro no inventa ningún MetricaId.
+    /// </summary>
+    public static string UrlComparacion(int configuracionId, int? metricaId) =>
+        metricaId is { } id ? $"/comparacion/{configuracionId}?metricaId={id}" : $"/comparacion/{configuracionId}";
+
     /// <summary>Resultados de resumen visibles de una ejecución según el filtro (colección fuente intacta).</summary>
     public IReadOnlyList<ResultadoMetricaConsulta> ResultadosVisibles(EjecucionConsulta ejecucion) =>
         MetricaFiltroId is { } id ? ejecucion.Resultados.Where(r => r.MetricaId == id).ToList() : ejecucion.Resultados;

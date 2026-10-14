@@ -407,4 +407,24 @@ public class ConsultaResultadosModeloTests
         Assert.Equal(Lat, modelo.MetricaFiltroId);      // la respuesta tardía no cambió el filtro
         Assert.Equal("Latencia", modelo.MetricasDisponibles.Single().Nombre); // métricas de la evaluación actual
     }
+
+    // =============================================================== CU-07 (navegación a M-07)
+
+    [Fact]
+    public void UrlComparacion_SinFiltro_NoInventaMetricaId()
+    {
+        Assert.Equal("/comparacion/42", ConsultaResultadosModelo.UrlComparacion(42, null));
+    }
+
+    [Fact]
+    public void UrlComparacion_ConFiltro_PropagaMetricaId()
+    {
+        Assert.Equal("/comparacion/42?metricaId=1", ConsultaResultadosModelo.UrlComparacion(42, 1));
+    }
+
+    [Fact]
+    public void UrlComparacion_UsaElConfiguracionIdIndicado()
+    {
+        Assert.StartsWith("/comparacion/7", ConsultaResultadosModelo.UrlComparacion(7, 5));
+    }
 }
