@@ -116,10 +116,11 @@ Auditado contra los `*.csproj` actuales:
 - **ASP.NET Core / Blazor Server** (Interactive Server) — capa Web.
 - **Entity Framework Core 8.0.31** (`Microsoft.EntityFrameworkCore.Sqlite` y `.Design`) + **SQLite**.
 - **NBomber 6.6.0** — motor de generación de carga HTTP (aislado en Infrastructure).
+- **QuestPDF 2026.9.1** — generación del reporte comparativo PDF de CU-09 (aislado en Infrastructure; licencia Community). Se restaura con `dotnet restore` como cualquier otra dependencia.
 - **xUnit 2.9.3** — pruebas automatizadas.
 - **.NET 10** — *target* de la **migración experimental** (seleccionado dinámicamente en el flujo aislado, no es el framework del repositorio).
 
-> **QuestPDF**: **previsto para CU-09** (reportes PDF); todavía no está incorporado. El muestreo de CPU/RAM usa `System.Diagnostics.Process` (no se usan `dotnet-counters` ni `Microsoft.Diagnostics.NETCore.Client`).
+> El muestreo de CPU/RAM usa `System.Diagnostics.Process` (no se usan `dotnet-counters` ni `Microsoft.Diagnostics.NETCore.Client`).
 
 ## Requisitos
 

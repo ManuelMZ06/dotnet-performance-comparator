@@ -1,5 +1,6 @@
 using DotNetPerformanceComparator.Application.Evaluations.Configuration;
 using DotNetPerformanceComparator.Application.Evaluations.Execution;
+using DotNetPerformanceComparator.Application.Evaluations.Reporting;
 using DotNetPerformanceComparator.Application.Evaluations.Results;
 using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
 using DotNetPerformanceComparator.Infrastructure.Execution;
@@ -10,8 +11,10 @@ using DotNetPerformanceComparator.Infrastructure.Persistence.Repositories;
 using DotNetPerformanceComparator.Infrastructure.Platform.Windows;
 using DotNetPerformanceComparator.Infrastructure.Processes;
 using DotNetPerformanceComparator.Infrastructure.Projects;
+using DotNetPerformanceComparator.Infrastructure.Reporting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using QuestPDF.Infrastructure;
 
 namespace DotNetPerformanceComparator.Infrastructure;
 
@@ -50,6 +53,10 @@ public static class DependencyInjection
 
         // CU-05
         services.AddScoped<IConsultaResultadosRepository, ConsultaResultadosRepository>();
+
+        // CU-09: licencia QuestPDF (Community, gratuita) fijada una sola vez; generador de reportes PDF.
+        QuestPDF.Settings.License = LicenseType.Community;
+        services.AddSingleton<IGeneradorReporteComparativo, QuestPdfGeneradorReporteComparativo>();
 
         // CU-04 (C-07.1)
         services.AddScoped<IEvaluationExecutionRepository, EvaluationExecutionRepository>();

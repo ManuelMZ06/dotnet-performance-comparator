@@ -61,6 +61,13 @@
         max-width: 100%;
     }
 
+.comp-acciones {
+    margin-top: 1rem;
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
 .comp-nota {
     font-size: 12px;
     color: var(--color-text-secondary);

@@ -1,4 +1,5 @@
 using DotNetPerformanceComparator.Application.Evaluations.Results;
+using DotNetPerformanceComparator.Domain.Constants;
 using DotNetPerformanceComparator.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -51,6 +52,7 @@ public sealed class ConsultaResultadosRepository : IConsultaResultadosRepository
             .Include(c => c.Proyecto)
             .Include(c => c.Migracion)
             .Include(c => c.TipoPrueba)
+            .Include(c => c.Parametros)
             .Include(c => c.ConfiguracionesMetrica).ThenInclude(cm => cm.Metrica)
             .Include(c => c.Ejecuciones).ThenInclude(e => e.Resultados).ThenInclude(r => r.Metrica)
             .Include(c => c.Ejecuciones).ThenInclude(e => e.Condiciones)
@@ -78,7 +80,41 @@ public sealed class ConsultaResultadosRepository : IConsultaResultadosRepository
         return new EvaluacionDetalleConsulta(
             config.Id, config.Nombre, config.Proyecto.Nombre, migracion, config.TipoPrueba.Nombre,
             config.Estado, config.NumeroEjecuciones, config.RutaObjetivo, config.Observaciones, config.FechaCreacion,
-            metricas, ejecuciones);
+            metricas, ejecuciones, MapParametros(config));
+    }
+
+    /// <summary>
+    /// Proyecta los <c>ParametroEvaluacion</c> (clave/valor) al read model tipado según el tipo de prueba.
+    /// Una evaluación corresponde a un único tipo (D-34). Un parámetro ausente o no numérico (configuración
+    /// histórica/inconsistente) se proyecta como <c>null</c>, NUNCA como 0 ficticio (ausencia ≠ cero).
+    /// </summary>
+    private static ParametrosPruebaConsulta? MapParametros(ConfiguracionEvaluacion config)
+    {
+        var valores = config.Parametros.ToDictionary(p => p.Clave, p => p.Valor);
+        int? Leer(string clave) => valores.TryGetValue(clave, out var texto) && int.TryParse(texto, out var numero) ? numero : null;
+
+        return config.TipoPrueba.Nombre switch
+        {
+            TiposPruebaConocidos.Carga => new ParametrosCargaConsulta(
+                Leer(ClavesParametroCarga.UsuariosVirtuales),
+                Leer(ClavesParametroCarga.DuracionSegundos),
+                Leer(ClavesParametroCarga.WarmUpSegundos),
+                Leer(ClavesParametroCarga.RampUpSegundos),
+                Leer(ClavesParametroCarga.IntervaloSolicitudesMs)),
+            TiposPruebaConocidos.Estres => new ParametrosEstresConsulta(
+                Leer(ClavesParametroEstres.UsuariosIniciales),
+                Leer(ClavesParametroEstres.IncrementoUsuarios),
+                Leer(ClavesParametroEstres.UsuariosMaximos),
+                Leer(ClavesParametroEstres.DuracionNivelSegundos),
+                Leer(ClavesParametroEstres.WarmUpSegundos),
+                Leer(ClavesParametroEstres.IntervaloSolicitudesMs)),
+            TiposPruebaConocidos.Concurrencia => new ParametrosConcurrenciaConsulta(
+                Leer(ClavesParametroConcurrencia.UsuariosConcurrentes),
+                Leer(ClavesParametroConcurrencia.Rondas),
+                Leer(ClavesParametroConcurrencia.WarmUpSegundos),
+                Leer(ClavesParametroConcurrencia.IntervaloRondasMs)),
+            _ => null
+        };
     }
 
     private static EjecucionConsulta MapEjecucion(Ejecucion e) => new(

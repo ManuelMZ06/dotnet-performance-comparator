@@ -49,6 +49,35 @@ public sealed record EjecucionConsulta(
     IReadOnlyList<ResultadoMetricaConsulta> Resultados,
     IReadOnlyList<NivelEstresConsulta> Niveles);
 
+/// <summary>
+/// Parámetros del experimento según el tipo de prueba (solo lectura; una evaluación = un `TipoPrueba`,
+/// ver D-34). Representación fuertemente tipada de los <c>ParametroEvaluacion</c> persistidos. Cada valor es
+/// <c>int?</c>: <c>null</c> indica ausencia o dato no interpretable (una configuración histórica/inconsistente);
+/// NUNCA se sustituye por 0, que solo aparece cuando 0 es el valor realmente persistido.
+/// </summary>
+public abstract record ParametrosPruebaConsulta;
+
+public sealed record ParametrosCargaConsulta(
+    int? UsuariosVirtuales,
+    int? DuracionSegundos,
+    int? WarmUpSegundos,
+    int? RampUpSegundos,
+    int? IntervaloSolicitudesMs) : ParametrosPruebaConsulta;
+
+public sealed record ParametrosEstresConsulta(
+    int? UsuariosIniciales,
+    int? IncrementoUsuarios,
+    int? UsuariosMaximos,
+    int? DuracionNivelSegundos,
+    int? WarmUpSegundos,
+    int? IntervaloSolicitudesMs) : ParametrosPruebaConsulta;
+
+public sealed record ParametrosConcurrenciaConsulta(
+    int? UsuariosConcurrentes,
+    int? Rondas,
+    int? WarmUpSegundos,
+    int? IntervaloRondasMs) : ParametrosPruebaConsulta;
+
 /// <summary>Detalle completo de una evaluación seleccionada.</summary>
 public sealed record EvaluacionDetalleConsulta(
     int Id,
@@ -62,7 +91,8 @@ public sealed record EvaluacionDetalleConsulta(
     string? Observaciones,
     DateTime FechaCreacion,
     IReadOnlyList<MetricaSeleccionadaConsulta> MetricasSeleccionadas,
-    IReadOnlyList<EjecucionConsulta> Ejecuciones)
+    IReadOnlyList<EjecucionConsulta> Ejecuciones,
+    ParametrosPruebaConsulta? Parametros = null)
 {
     /// <summary>true si existe al menos un resultado persistido (resumen de ejecución o de nivel de estrés).</summary>
     public bool TieneResultados =>

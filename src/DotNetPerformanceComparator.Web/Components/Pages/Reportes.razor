@@ -1,0 +1,175 @@
+@page "/reportes"
+@using DotNetPerformanceComparator.Application.Evaluations.Comparison
+@using DotNetPerformanceComparator.Application.Evaluations.Results
+@inject IConsultaResultadosService Consulta
+@inject IComparacionResultadosService Comparador
+@inject DotNetPerformanceComparator.Application.Evaluations.Reporting.IGeneradorReporteComparativo Generador
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<Reportes> Logger
+
+@* M-08 — CU-09 Generación de reporte comparativo PDF. Representa el experimento completo (sin filtro CU-06). *@
+
+<PageHeader Title="Generación de reporte PDF"
+            Description="Reporte comparativo .NET 8 vs .NET 10 de una evaluación" />
+
+<OperationMessage Kind="_modelo.MensajeTipo" Message="@_modelo.Mensaje" />
+
+<div class="reportes-grid">
+    <Panel Title="Configuración del reporte">
+        @if (_modelo.CargandoListado)
+        {
+            <p class="reportes-cargando">Cargando evaluaciones…</p>
+        }
+        else
+        {
+            <div class="reportes-campo">
+                <label for="rep-evaluacion">Evaluación base</label>
+                <select id="rep-evaluacion" class="form-control" value="@(_modelo.SeleccionId?.ToString() ?? "")" @onchange="OnEvaluacionChanged">
+                    <option value="">— Seleccione una evaluación —</option>
+                    @foreach (var e in _modelo.Evaluaciones)
+                    {
+                        <option value="@e.Id">@e.Nombre (@e.Proyecto · @e.TipoPrueba)</option>
+                    }
+                </select>
+            </div>
+
+            @if (_modelo.CargandoDetalle)
+            {
+                <p class="reportes-cargando">Cargando evaluación…</p>
+            }
+            else if (_modelo.Detalle is not null)
+            {
+                <div class="reportes-campo">
+                    <label for="rep-titulo">Título del reporte</label>
+                    <input id="rep-titulo" class="form-control" maxlength="150"
+                           value="@_modelo.Titulo" @onchange="e => _modelo.EstablecerTitulo(e.Value?.ToString())" />
+                    @if (!_modelo.TituloValido)
+                    {
+                        <span class="reportes-error">El título es obligatorio (máximo 150 caracteres).</span>
+                    }
+                </div>
+
+                <div class="reportes-campo">
+                    <span class="reportes-label">Contenido a incluir</span>
+                    <div class="reportes-checks">
+                        @foreach (var (clave, texto, valor) in Secciones())
+                        {
+                            <label class="reportes-check">
+                                <input type="checkbox" checked="@valor" @onchange="e => _modelo.AlternarSeccion(clave, (bool)(e.Value ?? false))" />
+                                @texto
+                            </label>
+                        }
+                    </div>
+                    @if (!_modelo.AlMenosUnaSeccion)
+                    {
+                        <span class="reportes-error">Seleccione al menos una sección.</span>
+                    }
+                </div>
+
+                <div class="reportes-campo">
+                    <label for="rep-obs">Observaciones finales</label>
+                    <textarea id="rep-obs" class="form-control" rows="3" maxlength="2000"
+                              @onchange="e => _modelo.EstablecerObservaciones(e.Value?.ToString())">@_modelo.ObservacionesFinales</textarea>
+                </div>
+
+                <div class="reportes-acciones">
+                    <button type="button" class="btn btn-primary" disabled="@(!_modelo.PuedeGenerar)" @onclick="_modelo.GenerarPdf">Generar PDF</button>
+                    <button type="button" class="btn btn-success" disabled="@(!_modelo.PuedeDescargar)" @onclick="DescargarAsync">Descargar</button>
+                    <button type="button" class="btn btn-secondary" @onclick="Cancelar">Cancelar</button>
+                </div>
+            }
+            else
+            {
+                <EmptyState Message="Seleccione una evaluación base para configurar el reporte." />
+            }
+        }
+    </Panel>
+
+    <Panel Title="Vista previa del reporte">
+        @if (_modelo.Detalle is { } detalle)
+        {
+            <div class="reportes-preview">
+                <div class="reportes-preview__cabecera">
+                    <span class="reportes-preview__titulo">@(_modelo.Titulo.ToUpperInvariant())</span>
+                    <span class="reportes-preview__sub">.NET 8 (referencia) vs .NET 10 (experimental)</span>
+                </div>
+                <p><strong>Proyecto:</strong> @detalle.Proyecto</p>
+                <p><strong>Evaluación:</strong> @detalle.Nombre</p>
+                <p><strong>Tipo de prueba:</strong> @detalle.TipoPrueba</p>
+
+                @if (_modelo.SinComparacion)
+                {
+                    <OperationMessage Kind="OperationMessageKind.Warning" Message="No existen resultados comparables para esta evaluación; el reporte será informativo." />
+                }
+                else if (_modelo.Resumen is { } resumen)
+                {
+                    <p class="reportes-preview__seccion">Resultados principales (variación % .NET 10 vs .NET 8):</p>
+                    <ul class="reportes-preview__lista">
+                        @foreach (var m in resumen.Metricas.Where(x => x.Interpretacion != InterpretacionComparacion.NoComparable))
+                        {
+                            <li>@m.Nombre: @ComparacionResultadosModelo.Porcentaje(m.DiferenciaPorcentual) (@ComparacionResultadosModelo.InterpretacionTexto(m.Interpretacion))</li>
+                        }
+                    </ul>
+                }
+
+                <p class="reportes-preview__seccion">Secciones incluidas:</p>
+                <ul class="reportes-preview__lista">
+                    @foreach (var (_, texto, valor) in Secciones())
+                    {
+                        @if (valor)
+                        {
+                            <li>@texto</li>
+                        }
+                    }
+                </ul>
+                <p class="reportes-preview__nota">Se incluirán tablas, gráficos y conclusión según la selección.</p>
+            </div>
+        }
+        else
+        {
+            <EmptyState Message="La vista previa se mostrará al seleccionar una evaluación." />
+        }
+    </Panel>
+</div>
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "configuracionId")]
+    public int? ConfiguracionId { get; set; }
+
+    private ReporteComparativoModelo _modelo = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _modelo = new ReporteComparativoModelo(Consulta, Comparador, Generador, Logger);
+        await _modelo.CargarListadoAsync(ConfiguracionId);
+    }
+
+    private IEnumerable<(string Clave, string Texto, bool Valor)> Secciones() =>
+    [
+        (nameof(ReporteComparativoModelo.IncluirDatosGenerales), "Datos generales de la evaluación", _modelo.IncluirDatosGenerales),
+        (nameof(ReporteComparativoModelo.IncluirResultadosPorEjecucion), "Resultados por ejecución", _modelo.IncluirResultadosPorEjecucion),
+        (nameof(ReporteComparativoModelo.IncluirPromediosConsolidado), "Promedios y consolidado", _modelo.IncluirPromediosConsolidado),
+        (nameof(ReporteComparativoModelo.IncluirTablaComparativa), "Tabla comparativa", _modelo.IncluirTablaComparativa),
+        (nameof(ReporteComparativoModelo.IncluirGraficos), "Gráficos", _modelo.IncluirGraficos),
+        (nameof(ReporteComparativoModelo.IncluirConclusionObservaciones), "Conclusión / observaciones", _modelo.IncluirConclusionObservaciones)
+    ];
+
+    private Task OnEvaluacionChanged(ChangeEventArgs e) =>
+        _modelo.SeleccionarAsync(int.TryParse(e.Value?.ToString(), out var id) ? id : null);
+
+    private async Task DescargarAsync()
+    {
+        if (_modelo.PdfGenerado is not { } pdf)
+        {
+            return;
+        }
+
+        using var stream = new MemoryStream(pdf.Contenido);
+        using var referencia = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("descargarArchivo", pdf.NombreArchivo, referencia);
+    }
+
+    private void Cancelar() => Navigation.NavigateTo(_modelo.DestinoCancelar());
+}

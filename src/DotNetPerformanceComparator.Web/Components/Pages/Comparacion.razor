@@ -4,6 +4,7 @@
 @using DotNetPerformanceComparator.Web.Components.Shared.Charts
 @inject IConsultaResultadosService Consulta
 @inject IComparacionResultadosService Comparador
+@inject NavigationManager Navigation
 @inject ILogger<Comparacion> Logger
 
 @* M-07 — CU-07 Comparar .NET 8 vs .NET 10. Comparación intra-evaluación; el cálculo vive en Application. *@
@@ -44,6 +45,9 @@ else if (_modelo.Detalle is { } detalle && _modelo.Resumen is { } resumen)
                 </select>
             </div>
         }
+        <div class="comp-acciones">
+            <button type="button" class="btn btn-primary btn-sm" @onclick="GenerarReporte">Generar reporte comparativo</button>
+        </div>
     </Panel>
 
     @if (_modelo.SinResultados)
@@ -257,6 +261,9 @@ else if (_modelo.Detalle is { } detalle && _modelo.Resumen is { } resumen)
         _modelo.AplicarFiltroMetrica(int.TryParse(valor, out var metricaId) ? metricaId : null);
         _cargadaMetricaId = _modelo.MetricaFiltroId;
     }
+
+    // CU-09: el reporte representa el experimento completo. NO se propaga el enfoque de métrica (CU-06).
+    private void GenerarReporte() => Navigation.NavigateTo(ComparacionResultadosModelo.UrlReporte(ConfiguracionId));
 
     private RenderFragment TablaComparativa(IReadOnlyList<ComparacionMetrica> filas) => __builder =>
     {

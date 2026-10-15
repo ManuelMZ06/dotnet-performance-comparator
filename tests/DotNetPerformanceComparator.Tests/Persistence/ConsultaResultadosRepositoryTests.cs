@@ -96,6 +96,16 @@ public sealed class ConsultaResultadosRepositoryTests : IDisposable
         context.SaveChanges();
     }
 
+    private void AgregarParametros(int configId, (string Clave, string Valor)[] parametros)
+    {
+        using var context = _database.CreateContext();
+        foreach (var (clave, valor) in parametros)
+        {
+            context.Add(new ParametroEvaluacion { ConfiguracionId = configId, Clave = clave, Valor = valor });
+        }
+        context.SaveChanges();
+    }
+
     // ---------------------------------------------------------------- listado
 
     [Fact]
@@ -283,5 +293,102 @@ public sealed class ConsultaResultadosRepositoryTests : IDisposable
 
         Assert.False(enListado.TieneResultados);
         Assert.False(detalle!.TieneResultados);
+    }
+
+    // ---------------------------------------------------------------- parámetros (CU-09, read model)
+
+    [Fact]
+    public async Task Detalle_ParametrosCarga_SeProyectanTipados()
+    {
+        var id = CrearEvaluacion("Carga", tipoId: 1);
+        AgregarParametros(id,
+        [
+            (ClavesParametroCarga.UsuariosVirtuales, "50"), (ClavesParametroCarga.DuracionSegundos, "30"),
+            (ClavesParametroCarga.WarmUpSegundos, "5"), (ClavesParametroCarga.RampUpSegundos, "10"),
+            (ClavesParametroCarga.IntervaloSolicitudesMs, "100")
+        ]);
+
+        var p = Assert.IsType<ParametrosCargaConsulta>((await _repo.ObtenerDetalleAsync(id))!.Parametros);
+        Assert.Equal(50, p.UsuariosVirtuales);
+        Assert.Equal(30, p.DuracionSegundos);
+        Assert.Equal(5, p.WarmUpSegundos);
+        Assert.Equal(10, p.RampUpSegundos);
+        Assert.Equal(100, p.IntervaloSolicitudesMs);
+    }
+
+    [Fact]
+    public async Task Detalle_ParametrosEstres_SeProyectanTipados()
+    {
+        var id = CrearEvaluacion("Estrés", tipoId: 2);
+        AgregarParametros(id,
+        [
+            (ClavesParametroEstres.UsuariosIniciales, "5"), (ClavesParametroEstres.IncrementoUsuarios, "5"),
+            (ClavesParametroEstres.UsuariosMaximos, "20"), (ClavesParametroEstres.DuracionNivelSegundos, "15"),
+            (ClavesParametroEstres.WarmUpSegundos, "3"), (ClavesParametroEstres.IntervaloSolicitudesMs, "50")
+        ]);
+
+        var p = Assert.IsType<ParametrosEstresConsulta>((await _repo.ObtenerDetalleAsync(id))!.Parametros);
+        Assert.Equal(5, p.UsuariosIniciales);
+        Assert.Equal(5, p.IncrementoUsuarios);
+        Assert.Equal(20, p.UsuariosMaximos);
+        Assert.Equal(15, p.DuracionNivelSegundos);
+        Assert.Equal(3, p.WarmUpSegundos);
+        Assert.Equal(50, p.IntervaloSolicitudesMs);
+    }
+
+    [Fact]
+    public async Task Detalle_ParametrosConcurrencia_SeProyectanTipados()
+    {
+        var id = CrearEvaluacion("Concurrencia", tipoId: 3);
+        AgregarParametros(id,
+        [
+            (ClavesParametroConcurrencia.UsuariosConcurrentes, "10"), (ClavesParametroConcurrencia.Rondas, "4"),
+            (ClavesParametroConcurrencia.WarmUpSegundos, "2"), (ClavesParametroConcurrencia.IntervaloRondasMs, "500")
+        ]);
+
+        var p = Assert.IsType<ParametrosConcurrenciaConsulta>((await _repo.ObtenerDetalleAsync(id))!.Parametros);
+        Assert.Equal(10, p.UsuariosConcurrentes);
+        Assert.Equal(4, p.Rondas);
+        Assert.Equal(2, p.WarmUpSegundos);
+        Assert.Equal(500, p.IntervaloRondasMs);
+    }
+
+    [Fact]
+    public async Task Detalle_SinParametros_NoRompeElDetalle_YSonNull()
+    {
+        var id = CrearEvaluacion("Sin parámetros", tipoId: 1);
+        var detalle = await _repo.ObtenerDetalleAsync(id);
+
+        Assert.NotNull(detalle); // la extensión del read model no rompe el detalle existente
+        var p = Assert.IsType<ParametrosCargaConsulta>(detalle!.Parametros);
+        Assert.Null(p.UsuariosVirtuales); // ausentes → null, NO 0 ficticio
+        Assert.Null(p.DuracionSegundos);
+    }
+
+    [Fact]
+    public async Task Detalle_ParametroAusente_EsNull_NoCero()
+    {
+        var id = CrearEvaluacion("Carga parcial", tipoId: 1);
+        AgregarParametros(id,
+        [
+            (ClavesParametroCarga.UsuariosVirtuales, "40"),
+            // DuracionSegundos ausente a propósito
+            (ClavesParametroCarga.WarmUpSegundos, "0") // 0 real persistido
+        ]);
+
+        var p = Assert.IsType<ParametrosCargaConsulta>((await _repo.ObtenerDetalleAsync(id))!.Parametros);
+        Assert.Equal(40, p.UsuariosVirtuales);
+        Assert.Null(p.DuracionSegundos);   // ausente → null
+        Assert.Equal(0, p.WarmUpSegundos); // 0 real sí se conserva
+    }
+
+    [Fact]
+    public async Task Detalle_ParametroNoNumerico_EsNull_NoCero()
+    {
+        var id = CrearEvaluacion("Carga inconsistente", tipoId: 1);
+        AgregarParametros(id, [(ClavesParametroCarga.UsuariosVirtuales, "cincuenta")]); // no parseable
+
+        var p = Assert.IsType<ParametrosCargaConsulta>((await _repo.ObtenerDetalleAsync(id))!.Parametros);
+        Assert.Null(p.UsuariosVirtuales); // dato no interpretable → null, no 0
     }
 }

@@ -112,6 +112,12 @@ public sealed class ComparacionResultadosModelo
 
     public void QuitarFiltroMetrica() => MetricaFiltroId = null;
 
+    /// <summary>
+    /// URL de M-08 (CU-09) para generar el reporte de esta evaluación. **No** propaga el enfoque de métrica
+    /// de CU-06: el reporte representa el experimento completo.
+    /// </summary>
+    public static string UrlReporte(int configuracionId) => $"/reportes?configuracionId={configuracionId}";
+
     /// <summary>Filas visibles del resumen según el enfoque (solo presentación; no recalcula).</summary>
     public IReadOnlyList<ComparacionMetrica> MetricasVisibles(ComparacionResumen resumen) =>
         MetricaFiltroId is { } id ? resumen.Metricas.Where(m => m.MetricaId == id).ToList() : resumen.Metricas;
@@ -177,40 +183,8 @@ public sealed class ComparacionResultadosModelo
 
     // ----------------------------------------------------------------- conclusión descriptiva (sin ganador)
 
-    /// <summary>Conteos descriptivos por interpretación del resumen. No declara ganador ni pondera.</summary>
-    public sealed record ConclusionComparacion(int Total, int Mejoras, int Empeoramientos, int Iguales, int NoComparables, string Texto);
-
-    public ConclusionComparacion Conclusion()
-    {
-        var metricas = Resumen?.Metricas ?? [];
-        var mejoras = metricas.Count(m => m.Interpretacion == InterpretacionComparacion.Mejora);
-        var empeora = metricas.Count(m => m.Interpretacion == InterpretacionComparacion.Empeora);
-        var iguales = metricas.Count(m => m.Interpretacion == InterpretacionComparacion.Igual);
-        var noComp = metricas.Count(m => m.Interpretacion == InterpretacionComparacion.NoComparable);
-        var total = metricas.Count;
-
-        string texto;
-        if (total == 0)
-        {
-            texto = "No hay métricas configuradas para comparar.";
-        }
-        else if (mejoras + empeora + iguales == 0)
-        {
-            texto = "No hay métricas comparables en el experimento.";
-        }
-        else
-        {
-            texto = $"En las métricas comparables del experimento, .NET 10 presentó mejora en {mejoras}, " +
-                    $"empeoramiento en {empeora} e igualdad en {iguales}.";
-        }
-
-        if (noComp > 0)
-        {
-            texto += $" {noComp} no se pudo comparar.";
-        }
-
-        return new ConclusionComparacion(total, mejoras, empeora, iguales, noComp, texto);
-    }
+    /// <summary>Conclusión descriptiva del resumen; delega en la lógica pura compartida con el reporte PDF.</summary>
+    public ConclusionDescriptiva Conclusion() => ConclusionComparativa.Describir(Resumen?.Metricas ?? []);
 
     // ----------------------------------------------------------------- contexto de saturación (texto)
 
