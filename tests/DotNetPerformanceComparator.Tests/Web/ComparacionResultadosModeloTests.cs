@@ -3,6 +3,7 @@ using DotNetPerformanceComparator.Application.Evaluations.Results;
 using DotNetPerformanceComparator.Domain.Constants;
 using DotNetPerformanceComparator.Web.Components.Pages;
 using DotNetPerformanceComparator.Web.Components.Shared;
+using DotNetPerformanceComparator.Web.Components.Shared.Charts;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DotNetPerformanceComparator.Tests.Web;
@@ -368,5 +369,174 @@ public class ComparacionResultadosModeloTests
         var tam = modelo.Resumen!.Metricas.Single(m => m.MetricaId == Tam);
         Assert.Equal(InterpretacionComparacion.NoComparable, tam.Interpretacion);
         Assert.NotNull(tam.Nota); // disponible para mostrarse de forma secundaria
+    }
+
+    // ================================================================= CU-08 — gráficos normales
+
+    private static async Task<ComparacionResultadosModelo> Cargada(EvaluacionDetalleConsulta detalle, int? metricaId = null)
+    {
+        var modelo = Crear(ConDetalle(detalle));
+        await modelo.CargarAsync(7, metricaId);
+        return modelo;
+    }
+
+    [Fact]
+    public async Task Graficos_UnaMetricaComparable_GeneraUnGrupo()
+    {
+        var modelo = await Cargada(CargaCpu());
+        var grupo = Assert.Single(modelo.GraficosResumen());
+        Assert.Equal("CPU", grupo.Category);
+        Assert.Equal(0.50m, grupo.Net8Value);
+        Assert.Equal(0.40m, grupo.Net10Value);
+        Assert.Equal("%", grupo.Unit);
+    }
+
+    [Fact]
+    public async Task Graficos_VariasMetricas_UnGrupoPorMetrica_OrdenDeterminista()
+    {
+        var detalle = Detalle(TiposPruebaConocidos.Carga, [M(Cpu, "CPU", "%"), M(Ram, "Memoria RAM", "MB"), M(Thr, "Throughput", "req/s")],
+            Eje(Net8, 1, EstadosEjecucion.Completada, [R(Cpu, 0.5m), R(Ram, 80m), R(Thr, 40m)]),
+            Eje(Net10, 1, EstadosEjecucion.Completada, [R(Cpu, 0.4m), R(Ram, 78m), R(Thr, 45m)]));
+        var graficos = (await Cargada(detalle)).GraficosResumen();
+        Assert.Equal(new[] { "CPU", "Memoria RAM", "Throughput" }, graficos.Select(g => g.Category));
+    }
+
+    [Fact]
+    public async Task Graficos_NoComparable_SeOmite()
+    {
+        var detalle = Detalle(TiposPruebaConocidos.Carga, [M(Cpu, "CPU", "%"), M(Lat, "Latencia", "ms")],
+            Eje(Net8, 1, EstadosEjecucion.Completada, [R(Cpu, 0.5m), R(Lat, 1m)]),
+            Eje(Net10, 1, EstadosEjecucion.Completada, [R(Cpu, 0.4m)])); // sin Latencia
+        var graficos = (await Cargada(detalle)).GraficosResumen();
+        Assert.Equal("CPU", Assert.Single(graficos).Category); // Latencia omitida, no 0
+    }
+
+    [Fact]
+    public async Task Graficos_AmbosCero_PresenteConCero()
+    {
+        var detalle = Detalle(TiposPruebaConocidos.Carga, [M(Cpu, "CPU", "%")],
+            Eje(Net8, 1, EstadosEjecucion.Completada, [R(Cpu, 0m)]),
+            Eje(Net10, 1, EstadosEjecucion.Completada, [R(Cpu, 0m)]));
+        var grupo = Assert.Single((await Cargada(detalle)).GraficosResumen());
+        Assert.Equal(0m, grupo.Net8Value);
+        Assert.Equal(0m, grupo.Net10Value);
+    }
+
+    [Fact]
+    public async Task Graficos_Tamano_Incluido_EnResumen()
+    {
+        var detalle = Detalle(TiposPruebaConocidos.Carga, [M(Tam, "Tamaño de la aplicación", "MB")],
+            Eje(Net8, 1, EstadosEjecucion.Completada, [R(Tam, 8m)]),
+            Eje(Net10, 1, EstadosEjecucion.Completada, [R(Tam, 7m)]));
+        Assert.Equal("Tamaño de la aplicación", Assert.Single((await Cargada(detalle)).GraficosResumen()).Category);
+    }
+
+    [Fact]
+    public async Task Graficos_Filtro_UnaVisualizacion()
+    {
+        var detalle = Detalle(TiposPruebaConocidos.Carga, [M(Cpu, "CPU", "%"), M(Ram, "Memoria RAM", "MB")],
+            Eje(Net8, 1, EstadosEjecucion.Completada, [R(Cpu, 0.5m), R(Ram, 80m)]),
+            Eje(Net10, 1, EstadosEjecucion.Completada, [R(Cpu, 0.4m), R(Ram, 78m)]));
+        var graficos = (await Cargada(detalle, Cpu)).GraficosResumen();
+        Assert.Equal("CPU", Assert.Single(graficos).Category);
+    }
+
+    [Fact]
+    public async Task Graficos_SinFiltro_TodasComparables()
+    {
+        var detalle = Detalle(TiposPruebaConocidos.Carga, [M(Cpu, "CPU", "%"), M(Ram, "Memoria RAM", "MB")],
+            Eje(Net8, 1, EstadosEjecucion.Completada, [R(Cpu, 0.5m), R(Ram, 80m)]),
+            Eje(Net10, 1, EstadosEjecucion.Completada, [R(Cpu, 0.4m), R(Ram, 78m)]));
+        Assert.Equal(2, (await Cargada(detalle)).GraficosResumen().Count);
+    }
+
+    [Fact]
+    public async Task Graficos_NingunaComparable_Vacia()
+    {
+        var detalle = Detalle(TiposPruebaConocidos.Carga, [M(Cpu, "CPU", "%")],
+            Eje(Net8, 1, EstadosEjecucion.Completada, [R(Cpu, 0.5m)])); // solo .NET 8
+        Assert.Empty((await Cargada(detalle)).GraficosResumen());
+    }
+
+    // ================================================================= CU-08 — gráficos de Estrés
+
+    private static EvaluacionDetalleConsulta EstresNiveles(MetricaSeleccionadaConsulta[] metricas, NivelEstresConsulta[] net8, NivelEstresConsulta[] net10) =>
+        Detalle(TiposPruebaConocidos.Estres, metricas,
+            Eje(Net8, 1, EstadosEjecucion.CompletadaConSaturacion, niveles: net8),
+            Eje(Net10, 1, EstadosEjecucion.CompletadaConSaturacion, niveles: net10));
+
+    [Fact]
+    public async Task GraficosNiveles_VariosNiveles_OrdenadosPorUsuarios_UnaUnidad()
+    {
+        var detalle = EstresNiveles([M(Cpu, "CPU", "%")],
+            [Niv(5, EstadosNivelEstres.Completado, R(Cpu, 0.5m)), Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.6m)), Niv(15, EstadosNivelEstres.Completado, R(Cpu, 0.7m))],
+            [Niv(5, EstadosNivelEstres.Completado, R(Cpu, 0.4m)), Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.5m)), Niv(15, EstadosNivelEstres.Completado, R(Cpu, 0.6m))]);
+        var grafico = Assert.Single((await Cargada(detalle)).GraficosNivelesEstres());
+        Assert.Equal(new[] { "5 usuarios", "10 usuarios", "15 usuarios" }, grafico.Grupos.Select(g => g.Category));
+        Assert.All(grafico.Grupos, g => Assert.Equal("%", g.Unit));
+    }
+
+    [Fact]
+    public async Task GraficosNiveles_MetricaNoComparableEnNivel_NoCreaGrupo()
+    {
+        // Nivel 10: CPU en ambas, RAM solo .NET 8. Nivel 20: ambas métricas en ambas versiones.
+        var detalle = EstresNiveles([M(Cpu, "CPU", "%"), M(Ram, "Memoria RAM", "MB")],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.5m), R(Ram, 70m)), Niv(20, EstadosNivelEstres.Completado, R(Cpu, 0.6m), R(Ram, 75m))],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.4m)), Niv(20, EstadosNivelEstres.Completado, R(Cpu, 0.5m), R(Ram, 72m))]);
+        var graficos = (await Cargada(detalle)).GraficosNivelesEstres();
+
+        Assert.Equal(2, graficos.Single(g => g.MetricaId == Cpu).Grupos.Count);  // 10 y 20
+        Assert.Equal("20 usuarios", Assert.Single(graficos.Single(g => g.MetricaId == Ram).Grupos).Category); // solo 20
+    }
+
+    [Fact]
+    public async Task GraficosNiveles_NivelNoComparable_NoGrupoNiCeroFicticio()
+    {
+        var detalle = EstresNiveles([M(Cpu, "CPU", "%")],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.5m)), Niv(30, EstadosNivelEstres.Saturado)],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.4m)), Niv(30, EstadosNivelEstres.Completado, R(Cpu, 0.7m))]);
+        var grafico = Assert.Single((await Cargada(detalle)).GraficosNivelesEstres());
+        Assert.Equal("10 usuarios", Assert.Single(grafico.Grupos).Category); // 30 no comparable → sin grupo
+    }
+
+    [Fact]
+    public async Task GraficosNiveles_Tamano_Excluido()
+    {
+        var detalle = EstresNiveles([M(Cpu, "CPU", "%"), M(Tam, "Tamaño de la aplicación", "MB")],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.5m))],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.4m))]);
+        var graficos = (await Cargada(detalle)).GraficosNivelesEstres();
+        Assert.DoesNotContain(graficos, g => g.MetricaId == Tam);
+    }
+
+    [Fact]
+    public async Task GraficosNiveles_Filtro_AfectaNiveles()
+    {
+        var detalle = EstresNiveles([M(Cpu, "CPU", "%"), M(Ram, "Memoria RAM", "MB")],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.5m), R(Ram, 70m))],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.4m), R(Ram, 68m))]);
+        var graficos = (await Cargada(detalle, Ram)).GraficosNivelesEstres();
+        Assert.Equal(Ram, Assert.Single(graficos).MetricaId);
+    }
+
+    [Fact]
+    public async Task GraficosEstres_ResumenComparable_GeneraSmallMultiples()
+    {
+        var modelo = await Cargada(EstresConMaximo());
+        Assert.NotEmpty(modelo.GraficosResumen());
+    }
+
+    [Fact]
+    public async Task GraficosEstres_ResumenNoComparable_SinResumenPeroNivelesSi()
+    {
+        // Ambas saturan en 20; nivel 10 comparable. Sin resumen, pero gráficos por nivel disponibles.
+        var detalle = EstresNiveles([M(Cpu, "CPU", "%")],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.5m)), Niv(20, EstadosNivelEstres.Saturado)],
+            [Niv(10, EstadosNivelEstres.Completado, R(Cpu, 0.4m)), Niv(20, EstadosNivelEstres.Saturado)]);
+        var modelo = await Cargada(detalle);
+
+        Assert.False(modelo.Resumen!.EsComparable);
+        Assert.Empty(modelo.GraficosResumen());          // no se fabrica resumen
+        Assert.NotEmpty(modelo.GraficosNivelesEstres());  // nivel 10 sí
     }
 }

@@ -6,7 +6,7 @@
 }
 else
 {
-    var geometry = BarChartLayout.Calculate(Groups);
+    var geometry = BarChartLayout.Calculate(Groups, SharedScale);
 
     <figure class="bar-chart">
         <svg class="bar-chart__svg" viewBox="0 0 @Num(geometry.Width) @Num(geometry.Height)" role="img" aria-labelledby="@_titleId">
@@ -49,10 +49,18 @@ else
     [Parameter]
     public string EmptyMessage { get; set; } = "Aún no existen resultados para comparar.";
 
+    /// <summary>
+    /// true cuando las categorías son la misma métrica a distintas cargas (Estrés por nivel) y las alturas
+    /// deben compartir escala. Por defecto false: cada grupo se escala a su propio máximo.
+    /// </summary>
+    [Parameter]
+    public bool SharedScale { get; set; }
+
     private static string Num(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
+    // Formato alineado con la tabla de M-07: hasta 4 decimales, cultura invariante.
     private static string FormatValue(decimal value, string unit) =>
-        $"{value.ToString("0.##", CultureInfo.CurrentCulture)} {unit}".TrimEnd();
+        $"{value.ToString("0.####", CultureInfo.InvariantCulture)} {unit}".TrimEnd();
 
     private static string SeriesClass(BarChartSeries series) =>
         series == BarChartSeries.Net8 ? "bar-chart__bar--net8" : "bar-chart__bar--net10";

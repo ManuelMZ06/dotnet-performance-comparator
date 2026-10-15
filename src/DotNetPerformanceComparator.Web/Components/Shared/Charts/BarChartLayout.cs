@@ -14,8 +14,11 @@ public sealed record BarChartGeometry(double Width, double Height, double Baseli
 
 /// <summary>
 /// Calcula la geometría SVG de <see cref="BarChart"/>.
-/// Cada grupo se escala respecto a su propio valor máximo, porque las categorías
-/// pueden ser métricas con unidades distintas (%, MB, ms...) y no son comparables entre sí.
+/// Por defecto (<c>sharedScale = false</c>) cada grupo se escala respecto a su propio valor máximo, porque
+/// las categorías pueden ser métricas con unidades distintas (%, MB, ms...) y no son comparables entre sí.
+/// Con <c>sharedScale = true</c> todos los grupos comparten un mismo máximo (mismo máximo absoluto de los
+/// valores de todos los grupos): se usa cuando las categorías son la misma métrica a distintas cargas
+/// (Estrés por nivel), donde las alturas SÍ deben compararse entre grupos.
 /// </summary>
 public static class BarChartLayout
 {
@@ -29,7 +32,7 @@ public static class BarChartLayout
 
     public static double PlotHeight => Height - TopPadding - BottomPadding;
 
-    public static BarChartGeometry Calculate(IReadOnlyList<BarChartGroup> groups)
+    public static BarChartGeometry Calculate(IReadOnlyList<BarChartGroup> groups, bool sharedScale = false)
     {
         var baseline = Height - BottomPadding;
         var groupWidth = BarWidth * 2 + BarGap;
@@ -37,12 +40,17 @@ public static class BarChartLayout
             ? SidePadding * 2
             : SidePadding * 2 + groups.Count * groupWidth + (groups.Count - 1) * GroupGap;
 
+        // Escala compartida: máximo absoluto entre todos los grupos (misma unidad). Sin grupos → 0.
+        var sharedMax = sharedScale && groups.Count > 0
+            ? groups.Max(g => Math.Max(Math.Max(g.Net8Value, g.Net10Value), 0m))
+            : 0m;
+
         var layouts = new List<BarChartGroupLayout>(groups.Count);
         for (var i = 0; i < groups.Count; i++)
         {
             var group = groups[i];
             var x = SidePadding + i * (groupWidth + GroupGap);
-            var max = Math.Max(Math.Max(group.Net8Value, group.Net10Value), 0m);
+            var max = sharedScale ? sharedMax : Math.Max(Math.Max(group.Net8Value, group.Net10Value), 0m);
 
             layouts.Add(new BarChartGroupLayout(
                 group.Category,

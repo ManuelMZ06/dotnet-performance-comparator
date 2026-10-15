@@ -3,8 +3,15 @@ using DotNetPerformanceComparator.Application.Evaluations.Comparison;
 using DotNetPerformanceComparator.Application.Evaluations.Results;
 using DotNetPerformanceComparator.Domain.Constants;
 using DotNetPerformanceComparator.Web.Components.Shared;
+using DotNetPerformanceComparator.Web.Components.Shared.Charts;
 
 namespace DotNetPerformanceComparator.Web.Components.Pages;
+
+/// <summary>
+/// Un gráfico de Estrés por nivel para una métrica: grupos = cargas (UsuariosObjetivo) con sus valores
+/// .NET 8/.NET 10. La geometría la calcula el layout; aquí solo se mapean datos de comparación (CU-08).
+/// </summary>
+public sealed record GraficoNivelMetrica(int MetricaId, string Nombre, string Unidad, IReadOnlyList<BarChartGroup> Grupos);
 
 /// <summary>
 /// Estado y presentación de M-07 (CU-07, Comparar .NET 8 vs .NET 10). Obtiene el detalle con
@@ -112,6 +119,61 @@ public sealed class ComparacionResultadosModelo
     /// <summary>Filas visibles de un nivel de estrés según el enfoque.</summary>
     public IReadOnlyList<ComparacionMetrica> MetricasVisibles(ComparacionNivelEstres nivel) =>
         MetricaFiltroId is { } id ? nivel.Metricas.Where(m => m.MetricaId == id).ToList() : nivel.Metricas;
+
+    // ----------------------------------------------------------------- visualización CU-08 (small multiples)
+
+    /// <summary>
+    /// Gráficos del resumen (Carga/Concurrencia, o nivel máximo de Estrés): un <see cref="BarChartGroup"/>
+    /// por métrica comparable (small multiple = un gráfico por métrica). Respeta el enfoque de CU-06 y omite
+    /// las NoComparable (la tabla ya las muestra). Incluye Tamaño como valor constante por versión. El mapeo
+    /// se delega en <see cref="ComparacionChartMapper"/> (compartido con M-01).
+    /// </summary>
+    public IReadOnlyList<BarChartGroup> GraficosResumen() =>
+        Resumen is null ? [] : ComparacionChartMapper.ResumenAGrupos(MetricasVisibles(Resumen));
+
+    /// <summary>
+    /// Gráficos de Estrés por nivel: uno por métrica comparable (excepto Tamaño), con un grupo por carga
+    /// (UsuariosObjetivo, en el orden ya calculado). Un nivel solo aporta grupo si ESA métrica del nivel es
+    /// comparable con ambos promedios; los huecos no se rellenan con 0. Respeta el enfoque de CU-06.
+    /// </summary>
+    public IReadOnlyList<GraficoNivelMetrica> GraficosNivelesEstres()
+    {
+        if (Estres is null)
+        {
+            return [];
+        }
+
+        var resultado = new List<GraficoNivelMetrica>();
+        foreach (var metrica in MetricasDisponibles)
+        {
+            if (metrica.MetricaId == TamanoMetricaId) // Tamaño nunca por nivel
+            {
+                continue;
+            }
+
+            if (MetricaFiltroId is { } id && metrica.MetricaId != id) // enfoque CU-06
+            {
+                continue;
+            }
+
+            var grupos = new List<BarChartGroup>();
+            foreach (var nivel in Estres.Niveles) // ya ordenados por UsuariosObjetivo ascendente
+            {
+                var comp = nivel.Metricas.FirstOrDefault(c => c.MetricaId == metrica.MetricaId);
+                if (comp is not null && ComparacionChartMapper.EsGraficable(comp))
+                {
+                    grupos.Add(new BarChartGroup($"{nivel.UsuariosObjetivo} usuarios", comp.PromedioNet8!.Value, comp.PromedioNet10!.Value, comp.Unidad));
+                }
+            }
+
+            if (grupos.Count > 0)
+            {
+                resultado.Add(new GraficoNivelMetrica(metrica.MetricaId, metrica.Nombre, metrica.Unidad, grupos));
+            }
+        }
+
+        return resultado;
+    }
 
     // ----------------------------------------------------------------- conclusión descriptiva (sin ganador)
 

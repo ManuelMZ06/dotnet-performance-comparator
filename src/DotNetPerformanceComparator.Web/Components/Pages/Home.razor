@@ -1,6 +1,13 @@
 @page "/"
+@using DotNetPerformanceComparator.Application.Evaluations.Results
+@using DotNetPerformanceComparator.Application.Evaluations.Comparison
+@using DotNetPerformanceComparator.Web.Components.Shared.Charts
+@inject IConsultaResultadosService Consulta
+@inject IComparacionResultadosService Comparador
+@inject ILogger<Home> Logger
 
-@* M-01 Inicio / Panel principal. Estados vacíos hasta conectar B-04, B-05 y B-06 (docs/UI_SPEC.md). *@
+@* M-01 Inicio / Panel principal. "Resumen comparativo reciente" conectado a CU-07/CU-08 (C-11.3).
+   Las tarjetas de resumen y "Actividad reciente" siguen en estado vacío (B-04, B-05, B-06; docs/UI_SPEC.md). *@
 
 <PageHeader Title="Inicio / Panel principal"
             Description="Vista general del sistema y acceso rápido a las funciones principales" />
@@ -23,7 +30,35 @@
     </Panel>
 
     <Panel Title="Resumen comparativo reciente">
-        <BarChart Groups="@ResumenComparativo" Title="Resumen comparativo reciente entre .NET 8 y .NET 10" />
+        @if (_resumen.Cargando)
+        {
+            <p class="home-resumen__cargando">Cargando resumen…</p>
+        }
+        else if (_resumen.Error)
+        {
+            <EmptyState Message="No fue posible preparar el resumen comparativo reciente." />
+        }
+        else if (_resumen.HayResumen && _resumen.Evaluacion is { } ev)
+        {
+            <p class="home-resumen__contexto">
+                <strong>@ev.Nombre</strong> · @ev.Proyecto · @ev.TipoPrueba · @ConsultaResultadosModelo.FechaCorta(ev.FechaCreacion)
+                <span class="home-resumen__versiones">.NET 8 (base) vs .NET 10 (experimental)</span>
+            </p>
+            <div class="home-resumen__grid">
+                @foreach (var grupo in _resumen.Graficos)
+                {
+                    <div class="home-resumen__card">
+                        <h4 class="home-resumen__card-titulo">@grupo.Category <span class="home-resumen__unidad">(@grupo.Unit)</span></h4>
+                        <BarChart Groups="@(new[] { grupo })" Title="@($"{grupo.Category} — .NET 8 vs .NET 10")" />
+                    </div>
+                }
+            </div>
+            <a class="btn btn-secondary btn-sm home-resumen__accion" href="@($"/comparacion/{ev.Id}")">Ver comparación</a>
+        }
+        else
+        {
+            <EmptyState Message="Aún no hay resultados comparables para visualizar." />
+        }
     </Panel>
 </div>
 
@@ -37,6 +72,11 @@
 </div>
 
 @code {
-    // Sin fuente de datos hasta implementar los CU correspondientes.
-    private static readonly IReadOnlyList<BarChartGroup> ResumenComparativo = [];
+    private InicioResumenModelo _resumen = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _resumen = new InicioResumenModelo(Consulta, Comparador, Logger);
+        await _resumen.CargarAsync();
+    }
 }

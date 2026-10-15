@@ -47,4 +47,57 @@ public class BarChartLayoutTests
 
         Assert.All(Assert.Single(geometry.Groups).Bars, b => Assert.Equal(0, b.Height));
     }
+
+    // ----------------------------------------------------------------- sharedScale (C-11.2, Estrés por nivel)
+
+    [Fact]
+    public void SharedScale_DefaultFalse_EscalaPorGrupo()
+    {
+        // Mismo escenario que Grupo_EscalaRespectoASuPropioMaximo: sin el flag, cada grupo a su máximo.
+        var geometry = BarChartLayout.Calculate(
+        [
+            new BarChartGroup("5 usuarios", 40m, 20m, "%"),
+            new BarChartGroup("10 usuarios", 10m, 5m, "%")
+        ]);
+
+        // Grupo 1: Net8=40 → altura plena. Grupo 2: Net8=10 → altura plena (escala propia).
+        Assert.Equal(BarChartLayout.PlotHeight, geometry.Groups[0].Bars[0].Height, 3);
+        Assert.Equal(BarChartLayout.PlotHeight, geometry.Groups[1].Bars[0].Height, 3);
+    }
+
+    [Fact]
+    public void SharedScale_True_UsaMaximoGlobal()
+    {
+        var geometry = BarChartLayout.Calculate(
+        [
+            new BarChartGroup("5 usuarios", 40m, 20m, "%"),
+            new BarChartGroup("10 usuarios", 10m, 5m, "%")
+        ], sharedScale: true);
+
+        // Máximo global = 40. Grupo 1 Net8=40 → plena; Net10=20 → mitad.
+        Assert.Equal(BarChartLayout.PlotHeight, geometry.Groups[0].Bars[0].Height, 3);
+        Assert.Equal(BarChartLayout.PlotHeight / 2, geometry.Groups[0].Bars[1].Height, 3);
+        // Grupo 2 Net8=10 → 1/4; Net10=5 → 1/8 (proporción conservada contra el grupo grande).
+        Assert.Equal(BarChartLayout.PlotHeight / 4, geometry.Groups[1].Bars[0].Height, 3);
+        Assert.Equal(BarChartLayout.PlotHeight / 8, geometry.Groups[1].Bars[1].Height, 3);
+    }
+
+    [Fact]
+    public void SharedScale_TodosCero_NoDividePorCero()
+    {
+        var geometry = BarChartLayout.Calculate(
+        [
+            new BarChartGroup("5 usuarios", 0m, 0m, "req/s"),
+            new BarChartGroup("10 usuarios", 0m, 0m, "req/s")
+        ], sharedScale: true);
+
+        Assert.All(geometry.Groups, g => Assert.All(g.Bars, b => Assert.Equal(0, b.Height)));
+    }
+
+    [Fact]
+    public void SharedScale_ColeccionVacia_NoFalla()
+    {
+        var geometry = BarChartLayout.Calculate([], sharedScale: true);
+        Assert.Empty(geometry.Groups);
+    }
 }
