@@ -18,35 +18,55 @@ public sealed class ProjectFileEditor : IProjectFileEditor
         XmlResolver = null
     };
 
-    public IReadOnlyList<string> FindExternalProjectReferences(string csprojPath, string rootDirectory)
+    public TargetFrameworkAnalysis AnalyzeTargetFramework(string csprojPath)
     {
-        var documento = Cargar(File.ReadAllText(csprojPath), preservarEspacios: false);
-        var directorioProyecto = Path.GetDirectoryName(Path.GetFullPath(csprojPath))!;
-
-        var externas = new List<string>();
-        foreach (var include in documento.Descendants()
-                     .Where(e => e.Name.LocalName == "ProjectReference")
-                     .Select(e => (string?)e.Attribute("Include") ?? string.Empty)
-                     .SelectMany(i => i.Split(';'))
-                     .Select(i => i.Trim())
-                     .Where(i => i.Length > 0))
+        XDocument documento;
+        try
         {
-            // Rutas con propiedades/elementos MSBuild o comodines no pueden resolverse sin evaluar MSBuild.
-            if (include.Contains("$(") || include.Contains("@(") || include.Contains('*'))
-            {
-                externas.Add(include);
-                continue;
-            }
-
-            var destino = Path.GetFullPath(Path.Combine(directorioProyecto, include.Replace('/', Path.DirectorySeparatorChar)));
-            if (!PathRules.IsSameOrInside(destino, rootDirectory))
-            {
-                externas.Add(include);
-            }
+            documento = Cargar(File.ReadAllText(csprojPath), preservarEspacios: false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or XmlException)
+        {
+            return new TargetFrameworkAnalysis(false, false, [], [], "no fue posible leer el archivo de proyecto.");
         }
 
-        return externas;
+        var elementos = ElementosTargetFramework(documento).ToList();
+        if (elementos.Count == 0)
+        {
+            // No declara TargetFramework de forma explícita: podría heredarlo (Directory.Build.props) o no ser
+            // SDK-style. No se puede garantizar una variante net10 equivalente → se detiene de forma controlada.
+            return new TargetFrameworkAnalysis(false, false, [], [],
+                "no declara TargetFramework/TargetFrameworks de forma explícita (podría heredarlo o no ser SDK-style).");
+        }
+
+        var originales = new List<string>();
+        var destinos = new List<string>();
+        var requiere = false;
+
+        foreach (var elemento in elementos)
+        {
+            var valor = elemento.Value;
+            if (valor.Contains("$(") || valor.Contains("@("))
+            {
+                return new TargetFrameworkAnalysis(false, false, [], [],
+                    "usa una expresión MSBuild cuyo framework objetivo no puede determinarse con seguridad.");
+            }
+
+            originales.AddRange(Tokens(valor));
+            var (nuevo, cambio) = ReemplazarNet8(valor);
+            requiere |= cambio;
+            destinos.AddRange(Tokens(nuevo));
+        }
+
+        return new TargetFrameworkAnalysis(
+            true,
+            requiere,
+            originales.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            destinos.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
     }
+
+    private static IEnumerable<string> Tokens(string valor) =>
+        valor.Split(';').Select(t => t.Trim()).Where(t => t.Length > 0);
 
     public TargetFrameworkUpdateResult UpdateTargetFramework(string csprojPath)
     {

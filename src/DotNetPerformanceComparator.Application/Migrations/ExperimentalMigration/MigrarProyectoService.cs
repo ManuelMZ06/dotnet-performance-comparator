@@ -1,4 +1,5 @@
 using DotNetPerformanceComparator.Application.Projects.Incorporation;
+using DotNetPerformanceComparator.Application.Projects.Workspace;
 using DotNetPerformanceComparator.Domain.Constants;
 using DotNetPerformanceComparator.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -18,6 +19,7 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
     private readonly IProyectoDotNetRepository _proyectos;
     private readonly IIncorporarProyectoService _incorporacion;
     private readonly IProjectFileEditor _editor;
+    private readonly IProjectWorkspaceResolver _workspace;
     private readonly IProjectCopyService _copia;
     private readonly IDotNetCommandRunner _dotnet;
     private readonly IMigracionRepository _migraciones;
@@ -28,6 +30,7 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
         IProyectoDotNetRepository proyectos,
         IIncorporarProyectoService incorporacion,
         IProjectFileEditor editor,
+        IProjectWorkspaceResolver workspace,
         IProjectCopyService copia,
         IDotNetCommandRunner dotnet,
         IMigracionRepository migraciones,
@@ -37,6 +40,7 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
         _proyectos = proyectos;
         _incorporacion = incorporacion;
         _editor = editor;
+        _workspace = workspace;
         _copia = copia;
         _dotnet = dotnet;
         _migraciones = migraciones;
@@ -81,7 +85,7 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
             return new MigrarProyectoResult(false, preparacion.Error);
         }
 
-        var (proyecto, csprojOriginal, destino, sdk) = (preparacion.Proyecto!, preparacion.Csproj!, preparacion.Destino!, preparacion.Sdk!);
+        var (proyecto, csprojOriginal, destino, sdk, workspace) = (preparacion.Proyecto!, preparacion.Csproj!, preparacion.Destino!, preparacion.Sdk!, preparacion.Workspace!);
         ejecucion.Etapa(MigrationStage.ValidacionProyecto, MigrationStageStatus.Correcto);
 
         var migracion = new Migracion
@@ -110,8 +114,10 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
         {
             // 2. Creación de copia experimental.
             ejecucion.Etapa(etapa, MigrationStageStatus.EnProceso);
-            ejecucion.Log($"Copiando el proyecto en {destino.FullPath} (se excluyen {string.Join(", ", ProjectCopyRules.ExcludedDirectories)})...");
-            var copia = await _copia.CopyAsync(Path.GetDirectoryName(csprojOriginal)!, destino, cancellationToken);
+            // La unidad de copia es el workspace (raíz que contiene el entry y sus ProjectReference), no solo
+            // el directorio del .csproj, para soportar soluciones multiproyecto (BUG-01). El original no se toca.
+            ejecucion.Log($"Copiando el workspace en {destino.FullPath} (se excluyen {string.Join(", ", ProjectCopyRules.ExcludedDirectories)})...");
+            var copia = await _copia.CopyAsync(workspace.WorkspaceRoot, destino, cancellationToken);
             if (!copia.Success)
             {
                 return await FallarAsync(migracion, proyecto, sdk, etapa, $"No fue posible crear la copia experimental. {copia.ErrorMessage}", null, ejecucion);
@@ -126,17 +132,30 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
 
             ejecucion.Etapa(etapa, MigrationStageStatus.Correcto);
 
-            // 3. Actualización del framework objetivo (solo en la copia).
+            // 3. Migración del framework objetivo del GRAFO LOCAL (BUG-02): se analizan TODOS los proyectos del
+            //    grafo en la copia, se valida el plan completo y solo entonces se aplica net8.0→net10.0. Evita
+            //    dejar la copia parcialmente transformada. El entry conserva su papel para restore/build/publish.
             etapa = MigrationStage.ActualizacionFramework;
             ejecucion.Etapa(etapa, MigrationStageStatus.EnProceso);
-            var csprojCopia = Path.Combine(destino.FullPath!, Path.GetFileName(csprojOriginal));
-            var tfm = _editor.UpdateTargetFramework(csprojCopia);
-            if (!tfm.Updated)
+            var csprojCopia = Path.Combine(destino.FullPath!, workspace.EntryProjectRelativePath);
+
+            var plan = AnalizarGrafo(workspace, destino.FullPath!);
+            if (plan.Error is not null)
             {
-                return await FallarAsync(migracion, proyecto, sdk, etapa, $"No fue posible actualizar el framework objetivo de la copia. {tfm.ErrorMessage}", null, ejecucion);
+                return await FallarAsync(migracion, proyecto, sdk, etapa, plan.Error, null, ejecucion);
             }
 
-            ejecucion.Log($"Framework objetivo de la copia: {string.Join(";", tfm.TargetFrameworks)}");
+            foreach (var item in plan.ARequiereCambio)
+            {
+                var tfm = _editor.UpdateTargetFramework(item.CopiaCsproj);
+                if (!tfm.Updated)
+                {
+                    return await FallarAsync(migracion, proyecto, sdk, etapa,
+                        $"No fue posible actualizar el framework objetivo de {item.NombreRelativo}. {tfm.ErrorMessage}", null, ejecucion);
+                }
+            }
+
+            ejecucion.Log(plan.Resumen);
             ejecucion.Etapa(etapa, MigrationStageStatus.Correcto);
 
             // 4. Restauración de dependencias con el SDK .NET 10.
@@ -165,14 +184,14 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
 
             migracion.Estado = EstadosMigracion.Exitosa;
             migracion.FechaFin = Ahora();
-            migracion.Detalle = $"SDK utilizado: {sdk}. Restauración y build preliminar .NET 10 correctos.";
+            migracion.Detalle = $"SDK utilizado: {sdk}. {plan.Resumen} Restauración y build preliminar .NET 10 correctos.";
             await _migraciones.UpdateAsync(migracion, CancellationToken.None);
             ejecucion.Etapa(etapa, MigrationStageStatus.Correcto);
             ejecucion.Log("Migración experimental finalizada correctamente.");
 
             return new MigrarProyectoResult(
                 true,
-                $"La copia experimental .NET 10 se preparó correctamente: restauración y build preliminar completados con el SDK {sdk}.",
+                $"La copia experimental .NET 10 se preparó correctamente. {plan.Resumen} Restauración y build preliminar completados con el SDK {sdk}.",
                 Resumen(migracion, proyecto, sdk));
         }
         catch (OperationCanceledException)
@@ -210,18 +229,23 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
         }
 
         var csproj = inspeccion.RutaProyecto!;
-        var directorioProyecto = Path.GetDirectoryName(csproj)!;
         ejecucion.Log("Proyecto base verificado: aplicación ASP.NET Core Web con net8.0.");
 
-        var externas = _editor.FindExternalProjectReferences(csproj, directorioProyecto);
-        if (externas.Count > 0)
+        // Resuelve el workspace (grafo de ProjectReference locales + raíz segura a copiar). Soporta soluciones
+        // multiproyecto preservando su estructura; el proyecto seleccionado sigue siendo el de entrada (BUG-01).
+        var resolucion = _workspace.Resolve(csproj);
+        if (!resolucion.Success)
         {
-            return Preparacion.Fallo(
-                $"El proyecto contiene referencias a proyectos ubicados fuera de su directorio ({string.Join(", ", externas)}). " +
-                "Esta versión de la herramienta no copia proyectos externos.");
+            return Preparacion.Fallo(resolucion.Message ?? "No fue posible resolver el workspace del proyecto.");
         }
 
-        var destino = _copia.CheckDestination(directorioProyecto, request.DirectorioSalida);
+        var workspace = resolucion.Info!;
+        if (workspace.ReferencedProjectFiles.Count > 0)
+        {
+            ejecucion.Log($"Proyecto principal: {Path.GetFileName(workspace.EntryProjectFullPath)}. Proyectos referenciados: {workspace.ReferencedProjectFiles.Count}.");
+        }
+
+        var destino = _copia.CheckDestination(workspace.WorkspaceRoot, request.DirectorioSalida);
         if (!destino.IsValid)
         {
             return Preparacion.Fallo(MensajeDestino(destino.Status));
@@ -252,7 +276,7 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
         }
 
         ejecucion.Log($"SDK .NET 10 seleccionado y verificado: {sdk}");
-        return new Preparacion(null, proyecto, csproj, destino, sdk);
+        return new Preparacion(null, proyecto, csproj, destino, sdk, workspace);
     }
 
     private async Task<MigrarProyectoResult> FallarAsync(
@@ -336,9 +360,61 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
         _ => "El directorio de salida no es válido."
     };
 
-    private sealed record Preparacion(string? Error, ProyectoDotNet? Proyecto, string? Csproj, DestinationCheck? Destino, string? Sdk)
+    private sealed record Preparacion(string? Error, ProyectoDotNet? Proyecto, string? Csproj, DestinationCheck? Destino, string? Sdk, ProjectWorkspaceInfo? Workspace)
     {
-        public static Preparacion Fallo(string error) => new(error, null, null, null, null);
+        public static Preparacion Fallo(string error) => new(error, null, null, null, null, null);
+    }
+
+    private sealed record ProyectoACambiar(string CopiaCsproj, string NombreRelativo);
+
+    private sealed record PlanMigracionGrafo(string? Error, IReadOnlyList<ProyectoACambiar> ARequiereCambio, string Resumen);
+
+    /// <summary>
+    /// Analiza TODOS los proyectos del grafo (BUG-02) sobre la copia y construye el plan de migración
+    /// net8.0→net10.0. Se detiene de forma controlada (sin aplicar cambios) si algún proyecto no puede
+    /// resolverse de forma segura (expresión MSBuild, herencia/no SDK-style). Los TFM no-net8 (netstandard,
+    /// net7/net9, net10 ya existente) se conservan y se informan.
+    /// </summary>
+    private PlanMigracionGrafo AnalizarGrafo(ProjectWorkspaceInfo workspace, string destinoRoot)
+    {
+        var cambios = new List<ProyectoACambiar>();
+        var conservados = new List<string>();
+
+        foreach (var original in workspace.ProjectFiles)
+        {
+            var relativa = Path.GetRelativePath(workspace.WorkspaceRoot, original);
+            var copia = Path.Combine(destinoRoot, relativa);
+            var nombre = Path.GetFileName(original);
+
+            var analisis = _editor.AnalyzeTargetFramework(copia);
+            if (!analisis.Resoluble)
+            {
+                _logger.LogWarning("No se pudo analizar el framework de {Proyecto}: {Motivo}", nombre, analisis.Motivo);
+                return new PlanMigracionGrafo(
+                    $"No se pudo determinar de forma segura el framework objetivo del proyecto {nombre}: {analisis.Motivo} " +
+                    "La migración experimental no puede garantizar una variante .NET 10 equivalente.",
+                    [], string.Empty);
+            }
+
+            _logger.LogInformation("Proyecto {Proyecto}: {Frameworks}{Accion}.", nombre,
+                string.Join(";", analisis.FrameworksOriginales), analisis.RequiresChange ? " → migrar a net10.0" : " → conservar");
+
+            if (analisis.RequiresChange)
+            {
+                cambios.Add(new ProyectoACambiar(copia, relativa));
+            }
+            else
+            {
+                conservados.Add($"{nombre} ({string.Join(";", analisis.FrameworksOriginales)})");
+            }
+        }
+
+        var total = workspace.ProjectFiles.Count;
+        var resumen = conservados.Count == 0
+            ? $"{total} proyecto(s) analizado(s): {cambios.Count} migrado(s) de .NET 8 a .NET 10."
+            : $"{total} proyecto(s) analizado(s): {cambios.Count} migrado(s) de .NET 8 a .NET 10; conservado(s) sin cambios: {string.Join(", ", conservados)}.";
+
+        return new PlanMigracionGrafo(null, cambios, resumen);
     }
 
     /// <summary>Publica el progreso de forma segura aunque no haya receptor.</summary>

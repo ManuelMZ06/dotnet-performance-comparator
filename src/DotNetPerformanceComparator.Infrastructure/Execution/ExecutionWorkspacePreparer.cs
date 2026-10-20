@@ -1,5 +1,6 @@
 using DotNetPerformanceComparator.Application.Evaluations.Execution;
 using DotNetPerformanceComparator.Application.Migrations.ExperimentalMigration;
+using DotNetPerformanceComparator.Application.Projects.Workspace;
 using DotNetPerformanceComparator.Domain.Constants;
 using Microsoft.Extensions.Logging;
 
@@ -14,12 +15,14 @@ namespace DotNetPerformanceComparator.Infrastructure.Execution;
 public sealed class ExecutionWorkspacePreparer : IExecutionWorkspacePreparer
 {
     private readonly IProjectCopyService _copia;
+    private readonly IProjectWorkspaceResolver _workspace;
     private readonly IDotNetCommandRunner _dotnet;
     private readonly ILogger<ExecutionWorkspacePreparer> _logger;
 
-    public ExecutionWorkspacePreparer(IProjectCopyService copia, IDotNetCommandRunner dotnet, ILogger<ExecutionWorkspacePreparer> logger)
+    public ExecutionWorkspacePreparer(IProjectCopyService copia, IProjectWorkspaceResolver workspace, IDotNetCommandRunner dotnet, ILogger<ExecutionWorkspacePreparer> logger)
     {
         _copia = copia;
+        _workspace = workspace;
         _dotnet = dotnet;
         _logger = logger;
     }
@@ -33,8 +36,17 @@ public sealed class ExecutionWorkspacePreparer : IExecutionWorkspacePreparer
             return new WorkspacePreparationResult(false, "La migración .NET 10 no tiene una ruta de copia registrada.", null);
         }
 
-        var origenNet8 = Path.GetDirectoryName(Path.GetFullPath(request.RutaOriginalCsproj));
-        if (origenNet8 is null || !Directory.Exists(origenNet8))
+        // Resuelve el workspace original (.NET 8): raíz segura a copiar y ruta del entry relativa a ella. La copia
+        // .NET 10 (RutaMigrada) ya es una copia de ese mismo workspace, por lo que el entry conserva su ruta relativa.
+        var resolucion = _workspace.Resolve(request.RutaOriginalCsproj);
+        if (!resolucion.Success)
+        {
+            return new WorkspacePreparationResult(false, resolucion.Message ?? "No fue posible resolver el workspace del proyecto original .NET 8.", null);
+        }
+
+        var entryRelativo = resolucion.Info!.EntryProjectRelativePath;
+        var origenNet8 = resolucion.Info.WorkspaceRoot;
+        if (!Directory.Exists(origenNet8))
         {
             return new WorkspacePreparationResult(false, "No se encontró el directorio del proyecto original .NET 8.", null);
         }
@@ -68,13 +80,13 @@ public sealed class ExecutionWorkspacePreparer : IExecutionWorkspacePreparer
 
         try
         {
-            var net8 = await PrepararVersionAsync(VersionesDotNet.Net8, VersionesDotNet.Net8Tfm, sdk8, origenNet8, Path.Combine(root, "net8"), Log, cancellationToken);
+            var net8 = await PrepararVersionAsync(VersionesDotNet.Net8, VersionesDotNet.Net8Tfm, sdk8, origenNet8, entryRelativo, Path.Combine(root, "net8"), Log, cancellationToken);
             if (net8.Error is not null)
             {
                 return new WorkspacePreparationResult(false, net8.Error, null);
             }
 
-            var net10 = await PrepararVersionAsync(VersionesDotNet.Net10, VersionesDotNet.Net10Tfm, sdk10, Path.GetFullPath(request.RutaMigrada), Path.Combine(root, "net10"), Log, cancellationToken);
+            var net10 = await PrepararVersionAsync(VersionesDotNet.Net10, VersionesDotNet.Net10Tfm, sdk10, Path.GetFullPath(request.RutaMigrada), entryRelativo, Path.Combine(root, "net10"), Log, cancellationToken);
             if (net10.Error is not null)
             {
                 return new WorkspacePreparationResult(false, net10.Error, null);
@@ -108,7 +120,7 @@ public sealed class ExecutionWorkspacePreparer : IExecutionWorkspacePreparer
     }
 
     private async Task<(PreparedVersion? Version, string? Error)> PrepararVersionAsync(
-        string versionDotNet, string tfm, string sdk, string origen, string destinoBase, Action<string> log, CancellationToken cancellationToken)
+        string versionDotNet, string tfm, string sdk, string origen, string entryRelativo, string destinoBase, Action<string> log, CancellationToken cancellationToken)
     {
         log($"Preparando {versionDotNet} (SDK {sdk})...");
         var srcDir = Path.Combine(destinoBase, "src");
@@ -127,10 +139,11 @@ public sealed class ExecutionWorkspacePreparer : IExecutionWorkspacePreparer
             return (null, $"No fue posible copiar {versionDotNet}. {copia.ErrorMessage}");
         }
 
-        var csproj = Directory.EnumerateFiles(srcDir, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
-        if (csproj is null)
+        // El entry conserva su ruta relativa dentro del workspace copiado (soporta soluciones multiproyecto).
+        var csproj = Path.Combine(srcDir, entryRelativo);
+        if (!File.Exists(csproj))
         {
-            return (null, $"No se encontró el archivo .csproj de {versionDotNet} en la copia.");
+            return (null, $"No se encontró el proyecto de entrada de {versionDotNet} en la copia.");
         }
 
         log($"> dotnet restore {versionDotNet}");

@@ -120,6 +120,40 @@ public sealed class ProjectCopyServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Copia_WorkspaceMultiproyecto_ConservaEstructuraYArchivosDeRaiz()
+    {
+        // Workspace de solución: raíz con sln/Directory.Build.props/Directory.Packages.props/NuGet.config + src/.
+        var raiz = _tree.Path("Repo");
+        _tree.File("Repo/Repo.sln", "sln");
+        _tree.File("Repo/Directory.Build.props", "<Project></Project>");
+        _tree.File("Repo/Directory.Packages.props", "<Project></Project>");
+        _tree.File("Repo/NuGet.config", "<configuration></configuration>");
+        _tree.File("Repo/src/Web/Web.csproj", "<Project></Project>");
+        _tree.File("Repo/src/Web/wwwroot/css/site.css", "body{}");
+        _tree.File("Repo/src/Lib/Lib.csproj", "<Project></Project>");
+        _tree.File("Repo/src/Web/bin/Debug/Web.dll", "x");
+        _tree.File("Repo/src/Web/obj/project.assets.json", "{}");
+        _tree.File("Repo/TestResults/run.trx", "x");
+        _tree.File("Repo/.git/config", "x");
+
+        var destino = _tree.Path("Salida", "RepoNet10");
+        var resultado = await _servicio.CopyAsync(raiz, _servicio.CheckDestination(raiz, destino));
+
+        Assert.True(resultado.Success);
+        Assert.True(File.Exists(Path.Combine(destino, "Repo.sln")));
+        Assert.True(File.Exists(Path.Combine(destino, "Directory.Build.props")));
+        Assert.True(File.Exists(Path.Combine(destino, "Directory.Packages.props")));
+        Assert.True(File.Exists(Path.Combine(destino, "NuGet.config")));
+        Assert.True(File.Exists(Path.Combine(destino, "src", "Web", "Web.csproj")));       // estructura preservada
+        Assert.True(File.Exists(Path.Combine(destino, "src", "Web", "wwwroot", "css", "site.css")));
+        Assert.True(File.Exists(Path.Combine(destino, "src", "Lib", "Lib.csproj")));        // proyecto hermano
+        Assert.False(Directory.Exists(Path.Combine(destino, "src", "Web", "bin")));         // artefactos excluidos
+        Assert.False(Directory.Exists(Path.Combine(destino, "src", "Web", "obj")));
+        Assert.False(Directory.Exists(Path.Combine(destino, "TestResults")));               // nueva exclusión
+        Assert.False(Directory.Exists(Path.Combine(destino, ".git")));
+    }
+
+    [Fact]
     public async Task Copia_EnDirectorioExistenteVacio_LoConserva()
     {
         var destino = _tree.Dir("Vacio");

@@ -37,6 +37,9 @@ public static class DependencyInjection
         services.AddSingleton<IProjectInspector, ProjectInspector>();
         services.AddScoped<IProyectoDotNetRepository, ProyectoDotNetRepository>();
 
+        // Resolución de workspace multiproyecto (BUG-01): grafo de ProjectReference + raíz segura a copiar.
+        services.AddSingleton<Application.Projects.Workspace.IProjectWorkspaceResolver, Projects.ProjectWorkspaceResolver>();
+
         // Selector nativo de .csproj (solo Windows; en otra plataforma devuelve Unsupported).
         services.AddSingleton<IProjectFilePicker, WindowsProjectFilePicker>();
 

@@ -154,6 +154,7 @@ public sealed class MigrarProyectoServiceTests : IDisposable
             new FakeProyectos(proyectos.Length > 0 ? proyectos : [Proyecto()]),
             new FakeIncorporacion(valido),
             new ProjectFileEditor(),
+            new DotNetPerformanceComparator.Infrastructure.Projects.ProjectWorkspaceResolver(),
             copia ?? new ProjectCopyService(),
             dotnet,
             migraciones,
@@ -230,8 +231,9 @@ public sealed class MigrarProyectoServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ReferenciaExterna_DetieneAntesDeCopiar()
+    public async Task ReferenciaInexistente_DetieneAntesDeCopiar()
     {
+        // Una ProjectReference que no existe en disco detiene la migración antes de copiar (sin inventar copia).
         File.WriteAllText(_csproj, TempTree.WebNet8.Replace("</Project>",
             """<ItemGroup><ProjectReference Include="..\..\Compartido\Lib.csproj" /></ItemGroup></Project>"""));
         var (servicio, _, migraciones) = Crear();
@@ -239,9 +241,190 @@ public sealed class MigrarProyectoServiceTests : IDisposable
         var resultado = await servicio.MigrarAsync(new MigrarProyectoRequest(1, _destino));
 
         Assert.False(resultado.Exito);
-        Assert.Contains("fuera de su directorio", resultado.Mensaje);
+        Assert.Contains("No se encontró el proyecto referenciado", resultado.Mensaje);
         Assert.Empty(migraciones.Estados);
         Assert.False(Directory.Exists(_destino));
+    }
+
+    [Fact]
+    public async Task ReferenciaHermanaEnSolucion_SeMigraCopiandoElWorkspace()
+    {
+        // Estructura multiproyecto: Sol/ { Sln, src/App/App.csproj → ..\Lib\Lib.csproj, src/Lib/Lib.csproj }.
+        _tree.File("Sol/App.sln", "Microsoft Visual Studio Solution File");
+        var entry = _tree.File("Sol/src/App/App.csproj", TempTree.WebNet8.Replace("</Project>",
+            """<ItemGroup><ProjectReference Include="..\Lib\Lib.csproj" /></ItemGroup></Project>"""));
+        _tree.File("Sol/src/App/Program.cs", "// programa");
+        _tree.File("Sol/src/Lib/Lib.csproj", """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>""");
+        _tree.File("Sol/Directory.Build.props", "<Project></Project>");
+        var proyecto = new ProyectoDotNet { Id = 1, Nombre = "App", RutaOriginal = entry, VersionBase = ".NET 8", EstadoValidacion = "Valido", FechaRegistro = Ahora.UtcDateTime };
+        var (servicio, dotnet, migraciones) = Crear(proyectos: proyecto);
+        _tree.Dir("SalidaSol");
+        var destino = _tree.Path("SalidaSol", "AppNet10");
+
+        var resultado = await servicio.MigrarAsync(new MigrarProyectoRequest(1, destino));
+
+        Assert.True(resultado.Exito);
+        Assert.Equal(destino, migraciones.Ultima!.RutaMigrada); // la copia es la raíz de la solución
+        // El workspace completo se copió preservando la estructura; el entry conserva su ruta relativa.
+        Assert.True(File.Exists(Path.Combine(destino, "src", "App", "App.csproj")));
+        Assert.True(File.Exists(Path.Combine(destino, "src", "Lib", "Lib.csproj")));         // proyecto hermano copiado
+        Assert.True(File.Exists(Path.Combine(destino, "App.sln")));                            // solución copiada
+        Assert.True(File.Exists(Path.Combine(destino, "Directory.Build.props")));              // archivo de build de raíz copiado
+        // Se migró el TFM de todo el grafo local net8 (entry + hermano); el restore/build usan el entry.
+        Assert.Contains("<TargetFramework>net10.0</TargetFramework>", File.ReadAllText(Path.Combine(destino, "src", "App", "App.csproj")));
+        Assert.Contains("<TargetFramework>net10.0</TargetFramework>", File.ReadAllText(Path.Combine(destino, "src", "Lib", "Lib.csproj"))); // hermano net8 → net10 (BUG-02)
+        Assert.Equal(Path.Combine(destino, "src", "App", "App.csproj"), Assert.Single(dotnet.Llamadas, l => l.Args[0] == "restore").Args[1]);
+    }
+
+    // ---------------------------------------------------------------- BUG-02: migración del grafo local
+
+    private static string CsprojTfm(string tfm, string refs = "") =>
+        $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>{tfm}</TargetFramework></PropertyGroup>{refs}</Project>";
+
+    private static string CsprojMulti(string tfms) =>
+        $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFrameworks>{tfms}</TargetFrameworks></PropertyGroup></Project>";
+
+    private static string RefItem(params string[] rutas) =>
+        "<ItemGroup>" + string.Join("", rutas.Select(r => $"<ProjectReference Include=\"{r}\" />")) + "</ItemGroup>";
+
+    private static string WebCon(string refs) => TempTree.WebNet8.Replace("</Project>", RefItem(refs.Split(';')) + "</Project>");
+
+    private ProyectoDotNet Proy(string entry) =>
+        new() { Id = 1, Nombre = "App", RutaOriginal = entry, VersionBase = ".NET 8", EstadoValidacion = "Valido", FechaRegistro = Ahora.UtcDateTime };
+
+    private async Task<(MigrarProyectoResult Resultado, string Destino)> MigrarMulti(string entry)
+    {
+        var (servicio, _, _) = Crear(proyectos: Proy(entry));
+        _tree.Dir("Out");
+        var destino = _tree.Path("Out", "Net10");
+        var resultado = await servicio.MigrarAsync(new MigrarProyectoRequest(1, destino));
+        return (resultado, destino);
+    }
+
+    private static string Tfm(string csproj) => File.ReadAllText(csproj);
+
+    private string CopiaCsproj(string destino, string relativo) => Path.Combine(destino, "src", relativo.Replace('/', Path.DirectorySeparatorChar));
+    private string OriginalCsproj(string relativo) => _tree.Path("S", "src", relativo.Replace('/', Path.DirectorySeparatorChar));
+
+    [Fact]
+    public async Task GrafoCompleto_MigraTodosLosProyectosNet8()
+    {
+        // Web → Application → Domain; Web → Infrastructure. Todos net8.
+        _tree.File("S/App.sln", "sln");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\Application\Application.csproj;..\Infrastructure\Infrastructure.csproj"));
+        _tree.File("S/src/Application/Application.csproj", CsprojTfm("net8.0", RefItem(@"..\Domain\Domain.csproj")));
+        _tree.File("S/src/Infrastructure/Infrastructure.csproj", CsprojTfm("net8.0", RefItem(@"..\Application\Application.csproj")));
+        _tree.File("S/src/Domain/Domain.csproj", CsprojTfm("net8.0"));
+
+        var (r, destino) = await MigrarMulti(entry);
+
+        Assert.True(r.Exito, r.Mensaje);
+        foreach (var p in new[] { "Web/Web.csproj", "Application/Application.csproj", "Infrastructure/Infrastructure.csproj", "Domain/Domain.csproj" })
+        {
+            Assert.Contains("net10.0", Tfm(CopiaCsproj(destino, p)));   // copia migrada
+            Assert.DoesNotContain("net8.0", Tfm(CopiaCsproj(destino, p)));
+            Assert.Contains("net8.0", Tfm(OriginalCsproj(p)));          // original intacto
+        }
+        // ProjectReference intactos en la copia.
+        Assert.Contains(@"<ProjectReference Include=""..\Domain\Domain.csproj"" />", Tfm(CopiaCsproj(destino, "Application/Application.csproj")));
+    }
+
+    [Fact]
+    public async Task Netstandard_SeConservaYWebMigra()
+    {
+        _tree.File("S/App.sln", "sln");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\Shared\Shared.csproj"));
+        _tree.File("S/src/Shared/Shared.csproj", CsprojTfm("netstandard2.0"));
+
+        var (r, destino) = await MigrarMulti(entry);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Contains("net10.0", Tfm(CopiaCsproj(destino, "Web/Web.csproj")));
+        Assert.Contains("<TargetFramework>netstandard2.0</TargetFramework>", Tfm(CopiaCsproj(destino, "Shared/Shared.csproj"))); // conservado
+        Assert.Contains("netstandard2.0", r.Mensaje); // informado como conservado
+    }
+
+    [Theory]
+    [InlineData("net8.0;netstandard2.0", "net10.0;netstandard2.0")]
+    [InlineData("netstandard2.0;net8.0", "netstandard2.0;net10.0")]
+    [InlineData("net8.0;net6.0", "net10.0;net6.0")]
+    [InlineData("net8.0;net10.0", "net10.0")]
+    [InlineData("net8.0;net8.0", "net10.0")]
+    public async Task Multitarget_ReemplazaSoloNet8YSinDuplicados(string original, string esperado)
+    {
+        _tree.File("S/App.sln", "sln");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\Lib\Lib.csproj"));
+        _tree.File("S/src/Lib/Lib.csproj", CsprojMulti(original));
+
+        var (r, destino) = await MigrarMulti(entry);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Contains($"<TargetFrameworks>{esperado}</TargetFrameworks>", Tfm(CopiaCsproj(destino, "Lib/Lib.csproj")));
+        Assert.DoesNotContain("net10.0;net10.0", Tfm(CopiaCsproj(destino, "Lib/Lib.csproj")));
+    }
+
+    [Fact]
+    public async Task OtroTfm_SeConserva()
+    {
+        _tree.File("S/App.sln", "sln");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\Legacy\Legacy.csproj"));
+        _tree.File("S/src/Legacy/Legacy.csproj", CsprojTfm("net7.0"));
+
+        var (r, destino) = await MigrarMulti(entry);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Contains("<TargetFramework>net7.0</TargetFramework>", Tfm(CopiaCsproj(destino, "Legacy/Legacy.csproj"))); // net7 no se fuerza a net10
+        Assert.Contains("net10.0", Tfm(CopiaCsproj(destino, "Web/Web.csproj")));
+    }
+
+    [Fact]
+    public async Task Expresion_FallaAntesDeAplicar_SinMigracionParcial()
+    {
+        _tree.File("S/App.sln", "sln");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\App\App.csproj"));
+        _tree.File("S/src/App/App.csproj", """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>$(DefaultTfm)</TargetFramework></PropertyGroup></Project>""");
+
+        var (r, destino) = await MigrarMulti(entry);
+
+        Assert.False(r.Exito);
+        Assert.Contains("No se pudo determinar de forma segura el framework", r.Mensaje);
+        // La copia NO quedó parcialmente migrada: el Web sigue net8 (el análisis no aplica cambios).
+        Assert.Contains("<TargetFramework>net8.0</TargetFramework>", Tfm(CopiaCsproj(destino, "Web/Web.csproj")));
+        Assert.Contains("<TargetFramework>net8.0</TargetFramework>", Tfm(OriginalCsproj("Web/Web.csproj"))); // original intacto
+    }
+
+    [Fact]
+    public async Task ProyectoNoReferenciado_NoSeMigra()
+    {
+        _tree.File("S/App.sln", "sln");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\App\App.csproj"));
+        _tree.File("S/src/App/App.csproj", CsprojTfm("net8.0"));
+        _tree.File("S/tests/Tests/Tests.csproj", CsprojTfm("net8.0")); // net8 pero NO en el grafo del entry
+        _tree.File("S/App.sln", "sln"); // raíz de solución (el workspace es S/)
+
+        var (r, destino) = await MigrarMulti(entry);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Contains("net10.0", Tfm(CopiaCsproj(destino, "Web/Web.csproj")));
+        Assert.Contains("net10.0", Tfm(CopiaCsproj(destino, "App/App.csproj")));
+        Assert.Contains("<TargetFramework>net8.0</TargetFramework>", Tfm(Path.Combine(destino, "tests", "Tests", "Tests.csproj"))); // no referenciado → net8
+    }
+
+    [Fact]
+    public async Task Multiproyecto_NoModificaElWorkspaceOriginal()
+    {
+        _tree.File("Orig/App.sln", "sln");
+        var entry = _tree.File("Orig/src/App/App.csproj", TempTree.WebNet8.Replace("</Project>",
+            """<ItemGroup><ProjectReference Include="..\Lib\Lib.csproj" /></ItemGroup></Project>"""));
+        _tree.File("Orig/src/Lib/Lib.csproj", """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>""");
+        var proyecto = new ProyectoDotNet { Id = 1, Nombre = "App", RutaOriginal = entry, VersionBase = ".NET 8", EstadoValidacion = "Valido", FechaRegistro = Ahora.UtcDateTime };
+        var huella = TempTree.Huella(_tree.Path("Orig"));
+        var (servicio, _, _) = Crear(proyectos: proyecto);
+        _tree.Dir("SalidaOrig");
+
+        await servicio.MigrarAsync(new MigrarProyectoRequest(1, _tree.Path("SalidaOrig", "Net10")));
+
+        Assert.Equal(huella, TempTree.Huella(_tree.Path("Orig"))); // workspace original intacto
     }
 
     [Fact]

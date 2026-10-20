@@ -23,25 +23,48 @@ public sealed class ProjectFileEditorTests : IDisposable
         </Project>
         """;
 
-    [Fact]
-    public void ReferenciaInterna_EsPermitida()
-    {
-        var csproj = _tree.File("App/App.csproj", Proyecto("<TargetFramework>net8.0</TargetFramework>",
-            """<ProjectReference Include="Modulos\Datos\Datos.csproj" />"""));
+    // La detección de ProjectReference externos se trasladó a ProjectWorkspaceResolver (BUG-01),
+    // con su propia batería de pruebas (ProjectWorkspaceResolverTests).
 
-        Assert.Empty(_editor.FindExternalProjectReferences(csproj, _tree.Path("App")));
+    // ---------------------------------------------------------------- análisis de TFM (BUG-02)
+
+    private string Lib(string xml) => _tree.File($"Lib{Guid.NewGuid():N}/Lib.csproj", xml);
+
+    [Fact]
+    public void Analyze_Net8_RequiereCambio()
+    {
+        var a = _editor.AnalyzeTargetFramework(Lib("""<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>"""));
+        Assert.True(a.Resoluble);
+        Assert.True(a.RequiresChange);
+        Assert.Equal(new[] { "net10.0" }, a.FrameworksDestino);
     }
 
     [Theory]
-    [InlineData(@"..\Compartido\Compartido.csproj")]
-    [InlineData(@"C:\Otro\Lib.csproj")]
-    [InlineData(@"$(RaizSolucion)\Lib\Lib.csproj")]
-    public void ReferenciaExterna_EsDetectada(string include)
+    [InlineData("netstandard2.0")]
+    [InlineData("netstandard2.1")]
+    [InlineData("net7.0")]
+    [InlineData("net10.0")]
+    public void Analyze_NoNet8_SeConserva(string tfm)
     {
-        var csproj = _tree.File("App/App.csproj", Proyecto("<TargetFramework>net8.0</TargetFramework>",
-            $"""<ProjectReference Include="{include}" />"""));
+        var a = _editor.AnalyzeTargetFramework(Lib($"""<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>{tfm}</TargetFramework></PropertyGroup></Project>"""));
+        Assert.True(a.Resoluble);
+        Assert.False(a.RequiresChange); // se conserva: la herramienta migra net8→net10, no cualquier TFM
+    }
 
-        Assert.Equal(new[] { include }, _editor.FindExternalProjectReferences(csproj, _tree.Path("App")));
+    [Fact]
+    public void Analyze_Expresion_NoResoluble()
+    {
+        var a = _editor.AnalyzeTargetFramework(Lib("""<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>$(DefaultTfm)</TargetFramework></PropertyGroup></Project>"""));
+        Assert.False(a.Resoluble);
+        Assert.Contains("expresión MSBuild", a.Motivo);
+    }
+
+    [Fact]
+    public void Analyze_SinTargetFramework_NoResoluble()
+    {
+        // Sin TargetFramework explícito (heredado/no SDK-style): no se puede determinar con seguridad.
+        var a = _editor.AnalyzeTargetFramework(Lib("""<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>"""));
+        Assert.False(a.Resoluble);
     }
 
     [Fact]

@@ -29,7 +29,7 @@ public sealed record CopyResult(bool Success, int FilesCopied, IReadOnlyList<str
 public static class ProjectCopyRules
 {
     /// <summary>Directorios excluidos de la copia (artefactos regenerables), en cualquier nivel.</summary>
-    public static IReadOnlyList<string> ExcludedDirectories { get; } = ["bin", "obj", ".vs", ".git"];
+    public static IReadOnlyList<string> ExcludedDirectories { get; } = ["bin", "obj", ".vs", ".git", "TestResults"];
 }
 
 /// <summary>
