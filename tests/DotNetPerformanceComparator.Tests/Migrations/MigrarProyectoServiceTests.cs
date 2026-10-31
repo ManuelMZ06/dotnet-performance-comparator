@@ -155,6 +155,7 @@ public sealed class MigrarProyectoServiceTests : IDisposable
             new FakeIncorporacion(valido),
             new ProjectFileEditor(),
             new DotNetPerformanceComparator.Infrastructure.Projects.ProjectWorkspaceResolver(),
+            new GlobalJsonSynchronizer(),
             copia ?? new ProjectCopyService(),
             dotnet,
             migraciones,
@@ -305,6 +306,80 @@ public sealed class MigrarProyectoServiceTests : IDisposable
 
     private string CopiaCsproj(string destino, string relativo) => Path.Combine(destino, "src", relativo.Replace('/', Path.DirectorySeparatorChar));
     private string OriginalCsproj(string relativo) => _tree.Path("S", "src", relativo.Replace('/', Path.DirectorySeparatorChar));
+
+    private static string? SdkVersion(string globalJsonPath) =>
+        File.Exists(globalJsonPath)
+            ? (string?)((System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(globalJsonPath))!)["sdk"]!["version"]
+            : null;
+
+    [Fact]
+    public async Task GlobalJsonExistente_CopiaApuntaANet10_OriginalIntacto()
+    {
+        _tree.File("S/App.sln", "sln");
+        _tree.File("S/global.json", """{ "sdk": { "version": "8.0.425", "rollForward": "latestFeature" }, "msbuild-sdks": { "Foo": "1.0.0" } }""");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\Lib\Lib.csproj"));
+        _tree.File("S/src/Lib/Lib.csproj", CsprojTfm("net8.0"));
+        var original = _tree.Path("S", "global.json");
+        var hashAntes = TempTree.Huella(_tree.Path("S"));
+
+        var (r, destino) = await MigrarMulti(entry);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal("10.0.400", SdkVersion(Path.Combine(destino, "global.json")));   // copia sincronizada
+        Assert.Equal("8.0.425", SdkVersion(original));                                 // original sin tocar
+        Assert.Equal(hashAntes, TempTree.Huella(_tree.Path("S")));                     // workspace original intacto
+        Assert.Contains("net10.0", Tfm(CopiaCsproj(destino, "Web/Web.csproj")));        // TFM migrado igual
+        Assert.Contains("1.0.0", File.ReadAllText(Path.Combine(destino, "global.json"))); // msbuild-sdks preservado en la copia
+    }
+
+    [Fact]
+    public async Task SinGlobalJson_SeCreaEnLaCopia_YNoEnElOriginal()
+    {
+        _tree.File("S/App.sln", "sln");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\Lib\Lib.csproj"));
+        _tree.File("S/src/Lib/Lib.csproj", CsprojTfm("net8.0"));
+
+        var (r, destino) = await MigrarMulti(entry);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal("10.0.400", SdkVersion(Path.Combine(destino, "global.json"))); // creado en la copia
+        Assert.False(File.Exists(_tree.Path("S", "global.json")));                   // original sigue sin global.json
+        Assert.False(File.Exists(Path.Combine(destino, "src", "Lib", "global.json"))); // no se crea dentro de cada proyecto
+    }
+
+    [Fact]
+    public async Task GlobalJsonInvalido_FallaYOriginalIntacto()
+    {
+        _tree.File("S/App.sln", "sln");
+        var original = _tree.File("S/global.json", "{ json roto ");
+        var entry = _tree.File("S/src/Web/Web.csproj", WebCon(@"..\Lib\Lib.csproj"));
+        _tree.File("S/src/Lib/Lib.csproj", CsprojTfm("net8.0"));
+
+        var (r, _) = await MigrarMulti(entry);
+
+        Assert.False(r.Exito);
+        Assert.Contains("global.json", r.Mensaje);
+        Assert.Equal("{ json roto ", File.ReadAllText(original)); // original intacto
+    }
+
+    [Fact]
+    public async Task ProyectoSimpleConGlobalJson_SeMigraYSincroniza()
+    {
+        // Proyecto simple (sin .sln, sin ProjectReference): workspace = su directorio.
+        _tree.File("Simple/global.json", """{ "sdk": { "version": "8.0.425" } }""");
+        var entry = _tree.File("Simple/MiApp.csproj", TempTree.WebNet8);
+        _tree.File("Simple/Program.cs", "// app");
+        var (servicio, _, _) = Crear(proyectos: Proy(entry));
+        _tree.Dir("OutSimple");
+        var destino = _tree.Path("OutSimple", "Net10");
+
+        var r = await servicio.MigrarAsync(new MigrarProyectoRequest(1, destino));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal("10.0.400", SdkVersion(Path.Combine(destino, "global.json")));
+        Assert.Equal("8.0.425", SdkVersion(_tree.Path("Simple", "global.json"))); // original intacto
+        Assert.Contains("<TargetFramework>net10.0</TargetFramework>", File.ReadAllText(Path.Combine(destino, "MiApp.csproj")));
+    }
 
     [Fact]
     public async Task GrafoCompleto_MigraTodosLosProyectosNet8()

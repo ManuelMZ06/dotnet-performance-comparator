@@ -29,7 +29,7 @@ public sealed class DotNetCommandRunner : IDotNetCommandRunner
             {
                 var globalJson = JsonSerializer.Serialize(new
                 {
-                    sdk = new { version = sdkVersion, rollForward = "disable", allowPrerelease = false }
+                    sdk = new { version = sdkVersion, rollForward = SdkPinPolicy.RollForward, allowPrerelease = SdkPinPolicy.AllowPrerelease }
                 });
                 await File.WriteAllTextAsync(Path.Combine(trabajo.FullName, "global.json"), globalJson, cancellationToken);
             }

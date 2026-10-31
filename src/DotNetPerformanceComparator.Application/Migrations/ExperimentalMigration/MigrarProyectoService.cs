@@ -20,6 +20,7 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
     private readonly IIncorporarProyectoService _incorporacion;
     private readonly IProjectFileEditor _editor;
     private readonly IProjectWorkspaceResolver _workspace;
+    private readonly IGlobalJsonSynchronizer _globalJson;
     private readonly IProjectCopyService _copia;
     private readonly IDotNetCommandRunner _dotnet;
     private readonly IMigracionRepository _migraciones;
@@ -31,6 +32,7 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
         IIncorporarProyectoService incorporacion,
         IProjectFileEditor editor,
         IProjectWorkspaceResolver workspace,
+        IGlobalJsonSynchronizer globalJson,
         IProjectCopyService copia,
         IDotNetCommandRunner dotnet,
         IMigracionRepository migraciones,
@@ -41,6 +43,7 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
         _incorporacion = incorporacion;
         _editor = editor;
         _workspace = workspace;
+        _globalJson = globalJson;
         _copia = copia;
         _dotnet = dotnet;
         _migraciones = migraciones;
@@ -144,6 +147,18 @@ public sealed class MigrarProyectoService : IMigrarProyectoService
             {
                 return await FallarAsync(migracion, proyecto, sdk, etapa, plan.Error, null, ejecucion);
             }
+
+            // Sincroniza el global.json de la copia con el SDK .NET 10 seleccionado (BUG-03) ANTES de aplicar los
+            // TFM: si el global.json es inválido, se detiene sin dejar csproj editados. El original no se toca.
+            var globalJson = _globalJson.Synchronize(destino.FullPath!, sdk);
+            if (globalJson.Outcome == GlobalJsonSyncOutcome.Failed)
+            {
+                return await FallarAsync(migracion, proyecto, sdk, etapa, globalJson.Error!, null, ejecucion);
+            }
+
+            ejecucion.Log(globalJson.Outcome == GlobalJsonSyncOutcome.Created
+                ? $"global.json creado para SDK {sdk}."
+                : $"global.json actualizado para SDK {sdk}.");
 
             foreach (var item in plan.ARequiereCambio)
             {

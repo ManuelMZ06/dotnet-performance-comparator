@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<IMigracionRepository, MigracionRepository>();
         services.AddSingleton<IProjectCopyService, ProjectCopyService>();
         services.AddSingleton<IProjectFileEditor, ProjectFileEditor>();
+        services.AddSingleton<IGlobalJsonSynchronizer, GlobalJsonSynchronizer>();
         services.AddSingleton<IDotNetCommandRunner, DotNetCommandRunner>();
         services.AddSingleton<IDirectoryPicker, WindowsDirectoryPicker>();
 
