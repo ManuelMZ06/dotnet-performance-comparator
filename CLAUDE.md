@@ -1,4 +1,4 @@
-# Claude Code
+# Code
 
 Instrucciones iniciales para trabajar en **DotNetPerformanceComparator**. Este archivo es breve y **apunta a las fuentes de verdad**; no las reemplaza.
 
